@@ -1,0 +1,20 @@
+# Obsidian
+.obsidian/
+
+# macOS
+.DS_Store
+
+# Temporary / junk
+*.log
+*.tmp
+
+# IntelliJ / Java — machine-local state and build output
+.idea/
+*.iml
+out/
+target/
+*.class
+
+# Secrets
+.env
+.env.*
