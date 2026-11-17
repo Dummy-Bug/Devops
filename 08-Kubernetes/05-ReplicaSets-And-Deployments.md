@@ -4,7 +4,7 @@ The running example is the bookshop's order service: one Spring Boot application
 
 ## How a controller finds its own pods: labels and selectors
 
-Picture three pods of the order service with random names — `xyz123`, `qwe123`, `rty567` — sitting in a cluster alongside hundreds of other pods belonging to the payment service, the user service and everything else. The controller manager looks after all of them. When one order-service pod disappears, how does the controller responsible for the order service even know which pods were its own, and so that it is now one short?
+Picture three pods of the order service with random names (`xyz123`, `qwe123`, `rty567`) sitting in a cluster alongside hundreds of other pods belonging to the payment service, the user service and everything else. The controller manager looks after all of them. When one order-service pod disappears, how does the controller responsible for the order service even know which pods were its own, and so that it is now one short?
 
 Not by name: the names are random, and a replacement gets a new one. Kubernetes uses **labels**.
 
@@ -14,7 +14,7 @@ Every order-service pod carries the same label, `app: order-service`. Payment-se
 
 > **A selector is a query that finds objects whose labels match.**
 
-The controller is given a selector, `app = order-service`, and its pods are whatever matches — however many there are, whatever they are called and wherever they run. Together they are called a **label selector**.
+The controller is given a selector, `app = order-service`, and its pods are whatever matches: however many there are, whatever they are called and wherever they run. Together they are called a **label selector**.
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ order-service-rs-wd8h2   1/1     Running   0          16s
 
 ## Reading a ReplicaSet's YAML
 
-Every Kubernetes object is written down the same way, as YAML — the same format as the Compose file from the first note. A file that describes one or more Kubernetes objects is called a **manifest**. This one describes the order service's ReplicaSet:
+Every Kubernetes object is written down the same way, as YAML (the same format as the Compose file from the first note). A file that describes one or more Kubernetes objects is called a **manifest**. This one describes the order service's ReplicaSet:
 
 ```yaml
 # k8s/replicaset.yaml
@@ -122,9 +122,9 @@ Read it as English, top to bottom:
 | `template.metadata.labels` | stamp every new pod with `app: order-service`, so the selector finds it |
 | `template.spec.containers` | each pod holds one container, made from `bookcart/order-service:v1` |
 
-The **template** is the pod template: the recipe for a new pod, which the ReplicaSet uses every time it has to create one, including every replacement. That is why it has to name an image — without one, there is nothing to build the pod from. Most of the rest is the same boilerplate in every object, and it does not need memorising: `apiVersion`, `kind`, `metadata` and `spec` appear in every manifest you will write.
+The **template** is the pod template: the recipe for a new pod, which the ReplicaSet uses every time it has to create one, including every replacement. That is why it has to name an image: without one, there is nothing to build the pod from. Most of the rest is the same boilerplate in every object, and it does not need memorising: `apiVersion`, `kind`, `metadata` and `spec` appear in every manifest you will write.
 
-**The labels in the template must match the selector.** A ReplicaSet whose template stamped pods with labels its own selector could not find would create pods forever without ever seeing its count reach three — so Kubernetes refuses it outright. Tried with the template labelled `app: orders` and the selector looking for `app: order-service`:
+**The labels in the template must match the selector.** A ReplicaSet whose template stamped pods with labels its own selector could not find would create pods forever without ever seeing its count reach three, so Kubernetes refuses it outright. Tried with the template labelled `app: orders` and the selector looking for `app: order-service`:
 
 ```text
 The ReplicaSet "mismatch" is invalid: spec.template.metadata.labels: Invalid value: {"app":"orders"}: `selector` does not match template `labels`
@@ -180,7 +180,7 @@ order-service-rs-zrrmf   nginx:1.29-alpine
 
 ## Deployment: a ReplicaSet with version management on top
 
-The architecture note named both objects in passing — a Deployment holding the description of an application, a ReplicaSet holding the count — and showed that each owns the next. Here is why the split exists. A **Deployment** is the controller built for exactly this. It is the one you will use most, by a long way: whatever the application is — a payment gateway, a notification system, a Spring Boot or FastAPI or Django service — it runs as a Deployment.
+The architecture note named both objects in passing (a Deployment holding the description of an application, a ReplicaSet holding the count) and showed that each owns the next. Here is why the split exists. A **Deployment** is the controller built for exactly this. It is the one you will use most, by a long way: whatever the application is — a payment gateway, a notification system, a Spring Boot or FastAPI or Django service — it runs as a Deployment.
 
 The interesting part is that **a Deployment is not a different mechanism from a ReplicaSet. It uses ReplicaSets.** It creates them and manages them, and the ReplicaSets do what they always did: keep the pods. On top, the Deployment adds what the ReplicaSet lacks:
 
@@ -189,7 +189,7 @@ The interesting part is that **a Deployment is not a different mechanism from a 
 - rollback to an earlier version;
 - control over how fast pods are replaced.
 
-**Checked against the documentation:** a Deployment is a higher-level concept that manages ReplicaSets and provides declarative updates to pods, and the ReplicaSet page says plainly that you may never need to manipulate ReplicaSet objects yourself — use a Deployment instead. Understand the ReplicaSet; use the Deployment.
+**Checked against the documentation:** a Deployment is a higher-level concept that manages ReplicaSets and provides declarative updates to pods, and the ReplicaSet page says plainly that you may never need to manipulate ReplicaSet objects yourself: use a Deployment instead. Understand the ReplicaSet; use the Deployment.
 
 The hierarchy, with one responsibility at each level:
 
@@ -234,7 +234,7 @@ spec:
             - containerPort: 8080
 ```
 
-This was run, with `nginx:1.28-alpine` standing in for version 1 — nginx listens on port 80, so the file that was run declared `containerPort: 80` instead of 8080. Applying it created a Deployment, and the Deployment created a ReplicaSet of its own:
+This was run, with `nginx:1.28-alpine` standing in for version 1; nginx listens on port 80, so the file that was run declared `containerPort: 80` instead of 8080. Applying it created a Deployment, and the Deployment created a ReplicaSet of its own:
 
 ```bash
 kubectl apply -f k8s/deployment.yaml
@@ -258,7 +258,7 @@ The names show the hierarchy. The ReplicaSet is named after the Deployment plus 
 
 ## Shipping version 2: a rolling update
 
-To ship a new version, change the image in the YAML — `bookcart/order-service:v1` becomes `bookcart/order-service:v2` — and apply the file again:
+To ship a new version, change the image in the YAML (`bookcart/order-service:v1` becomes `bookcart/order-service:v2`) and apply the file again:
 
 ```bash
 kubectl apply -f k8s/deployment.yaml
@@ -281,7 +281,7 @@ flowchart TD
     class OLD,OP inert
 ```
 
-The ReplicaSets are not named v1 and v2 — those are labels for explaining. Their names come from the pod template, as the hash on the end. Applying the same template on two different clusters produced the same ReplicaSet name on both.
+The ReplicaSets are not named v1 and v2; those are labels for explaining. Their names come from the pod template, as the hash on the end. Applying the same template on two different clusters produced the same ReplicaSet name on both.
 
 This was run. The image was changed from `nginx:1.28-alpine` to `nginx:1.29-alpine`, and both ReplicaSets were sampled once a second while the rollout ran. Condensed to the three distinct states it passed through:
 
@@ -297,7 +297,7 @@ The Deployment first added one new pod while all three old ones still served, th
 strategy={"rollingUpdate":{"maxSurge":"25%","maxUnavailable":"25%"},"type":"RollingUpdate"}
 ```
 
-**maxSurge** is how many pods above the desired count may exist during the update, and **maxUnavailable** is how many below it may be missing. **Checked against the documentation:** the surge percentage is rounded up and the unavailable percentage rounded down. With three replicas, 25% surge rounds up to 1 and 25% unavailable rounds down to 0 — one extra pod is allowed, and none may be missing. That is exactly the sequence above: add one, then remove one, never dropping below three.
+**maxSurge** is how many pods above the desired count may exist during the update, and **maxUnavailable** is how many below it may be missing. **Checked against the documentation:** the surge percentage is rounded up and the unavailable percentage rounded down. With three replicas, 25% surge rounds up to 1 and 25% unavailable rounds down to 0: one extra pod is allowed, and none may be missing. That is exactly the sequence above: add one, then remove one, never dropping below three.
 
 > [!tip] **The old ReplicaSet is kept, not deleted.**
 > After the rollout, `kubectl get rs` still showed both:
@@ -326,7 +326,7 @@ REVISION  CHANGE-CAUSE
 kubectl rollout undo deploy/order-service
 ```
 
-This was run, and the result shows how rollback works underneath. **No new ReplicaSet was created.** The Deployment took the old ReplicaSet, the one sitting at zero, scaled it back up to three and scaled the new one down to zero — a rolling update in reverse:
+This was run, and the result shows how rollback works underneath. **No new ReplicaSet was created.** The Deployment took the old ReplicaSet, the one sitting at zero, scaled it back up to three and scaled the new one down to zero (a rolling update in reverse):
 
 ```text
 NAME                       DESIRED   IMAGE               REVISION
@@ -339,8 +339,8 @@ The old template became the newest revision, 3, and the history now read 2 and 3
 > [!warning] **A rollback leaves your YAML file behind.**
 > The undo printed a warning worth reading: the Deployment had been managed with `kubectl apply`, and rolling back does not update the record of what was last applied, which can cause unexpected behaviour on the next `kubectl apply`. The file on disk still says version 2. **If you roll back and later apply that file again, version 2 comes straight back.** After an emergency rollback, fix the file to match what is actually running.
 
-> [!question] **Where is the old version kept — in etcd?**
-> Yes. Everything a cluster knows is stored in etcd, and an old ReplicaSet is an ordinary object like any other: it stays there, scaled to zero, holding its template. The Deployment keeps the last ten by default — the run showed `revisionHistoryLimit=10` — and those retained ReplicaSets are the history that `kubectl rollout history` reads and that `kubectl rollout undo` scales back up. It is not a cache inside the ReplicaSet.
+> [!question] **Where is the old version kept? In etcd?**
+> Yes. Everything a cluster knows is stored in etcd, and an old ReplicaSet is an ordinary object like any other: it stays there, scaled to zero, holding its template. The Deployment keeps the last ten by default (the run showed `revisionHistoryLimit=10`), and those retained ReplicaSets are the history that `kubectl rollout history` reads and that `kubectl rollout undo` scales back up. It is not a cache inside the ReplicaSet.
 
 ## Scaling is not a new version
 
@@ -358,7 +358,7 @@ order-service-58df66977f   0         0         0       28s
 order-service-7b884754c4   10        10        10      30s
 ```
 
-**A version change** changes the pod template — usually the image. That creates a new ReplicaSet and a rolling update.
+**A version change** changes the pod template (usually the image). That creates a new ReplicaSet and a rolling update.
 
 | Change | Example | What the Deployment does |
 |---|---|---|
@@ -378,16 +378,16 @@ flowchart LR
 ```
 
 > [!question] **Does each controller do only one thing at a time?**
-> Each object has one controller looking after it, and each kind has one behaviour: a ReplicaSet keeps a count, a Deployment manages versions. They combine by layering rather than by one object switching between behaviours. A Deployment always has ReplicaSets under it — one per template it has run — so using a Deployment means using ReplicaSets as well.
+> Each object has one controller looking after it, and each kind has one behaviour: a ReplicaSet keeps a count, a Deployment manages versions. They combine by layering rather than by one object switching between behaviours. A Deployment always has ReplicaSets under it (one per template it has run), so using a Deployment means using ReplicaSets as well.
 
 > [!question] **So is a Deployment just a ReplicaSet plus rolling deployment?**
 > A ReplicaSet plus more than that: rolling updates, the revision history, rollback and control over the pace of replacement. Rolling deployment is one feature of several.
 
-> [!question] **A rollout should go one pod at a time — but a ReplicaSet creates all three at once. Which wins?**
+> [!question] **A rollout should go one pod at a time, but a ReplicaSet creates all three at once. Which wins?**
 > The Deployment does. During a rollout it does not hand the new ReplicaSet a count of three straight away; it raises the new ReplicaSet's count and lowers the old one's in steps, within the surge and unavailability limits above. The ReplicaSet only ever sees the number it has been given at that moment.
 
 > [!question] **What happens to a request a pod is processing when the rollout removes that pod?**
-> This depends on how the application shuts down, and the full answer belongs with running many replicas in production. **Going further:** Kubernetes does not kill a pod instantly. It sends the container a signal to stop and waits for a grace period before forcing it — 30 seconds by default; the pods in the run showed `terminationGracePeriodSeconds: 30` — so an application that finishes its in-flight requests when told to stop loses none of them.
+> This depends on how the application shuts down, and the full answer belongs with running many replicas in production. **Going further:** Kubernetes does not kill a pod instantly. It sends the container a signal to stop and waits for a grace period before forcing it (30 seconds by default; the pods in the run showed `terminationGracePeriodSeconds: 30`), so an application that finishes its in-flight requests when told to stop loses none of them.
 
 ## When a Deployment is the right choice
 

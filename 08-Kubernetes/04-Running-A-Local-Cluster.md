@@ -31,7 +31,7 @@ flowchart TD
 
 ## Installing kubectl and Minikube
 
-Every command below was run, in this order, on an Ubuntu 26.04 virtual machine with 4 GB of RAM, on an Apple Silicon Mac. The output in the first three notes came from a different cluster on that same machine — **k3s**, a lightweight Kubernetes distribution, whose one node was called `devops`. From here on the output comes from Minikube, so the node is called `minikube` and the version is Minikube's.
+Every command below was run, in this order, on an Ubuntu 26.04 virtual machine with 4 GB of RAM, on an Apple Silicon Mac. The output in the first three notes came from a different cluster on that same machine: **k3s**, a lightweight Kubernetes distribution, whose one node was called `devops`. From here on the output comes from Minikube, so the node is called `minikube` and the version is Minikube's.
 
 Install kubectl and check the client:
 
@@ -62,7 +62,7 @@ docker --version
 docker ps
 ```
 
-Tell Minikube to use Docker as its driver — the thing it creates the Kubernetes node with. Minikube remembers this as the default from then on:
+Tell Minikube to use Docker as its driver (the thing it creates the Kubernetes node with). Minikube remembers this as the default from then on:
 
 ```bash
 minikube config set driver docker
@@ -90,7 +90,7 @@ The last lines of a successful start:
 > tls: failed to verify certificate: x509: certificate has expired or is not yet valid:
 > current time 2026-11-04T18:08:51Z is before 2026-11-09T06:18:15Z
 > ```
-> Read the last line: the machine believed it was 4 November, and the registry's certificate only became valid on the 9th. The virtual machine's clock had fallen twelve days behind after being suspended, so a perfectly good certificate looked like it was not valid yet. Its time service knew — it reported the clock as about 1,018,000 seconds slow — but corrects drift gradually. Forcing it to jump to the right time fixed it at once:
+> Read the last line: the machine believed it was 4 November, and the registry's certificate only became valid on the 9th. The virtual machine's clock had fallen twelve days behind after being suspended, so a perfectly good certificate looked like it was not valid yet. Its time service knew (it reported the clock as about 1,018,000 seconds slow) but corrects drift gradually. Forcing it to jump to the right time fixed it at once:
 > ```bash
 > sudo chronyc makestep
 > ```
@@ -111,7 +111,7 @@ apiserver: Running
 kubeconfig: Configured
 ```
 
-These are the parts from the architecture note. The **host** is the machine the node runs on — here, a container Docker created. The **kubelet** is the agent that runs the node's workloads. The **apiserver** is the front desk. **kubeconfig** is the file that tells kubectl which cluster to talk to and how, and `Configured` means kubectl is already pointed at this one.
+These are the parts from the architecture note. The **host** is the machine the node runs on: here, a container Docker created. The **kubelet** is the agent that runs the node's workloads. The **apiserver** is the front desk. **kubeconfig** is the file that tells kubectl which cluster to talk to and how, and `Configured` means kubectl is already pointed at this one.
 
 The architecture note described a cluster split in two: control-plane nodes that decide, and worker nodes that run the workloads. In production they are separate machines, and there are several of each. **Minikube creates one node and gives it both jobs** — the architecture note's closing tip, that a one-node cluster is both halves at once. It is the control plane, and it is also the worker that pods land on. Running separate machines for each role just to learn would mean a second computer for every node; a single node that plays both parts teaches the same thing. When the same work moves to a cloud provider, the roles go back onto separate machines.
 
@@ -184,7 +184,7 @@ NAME       STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP  
 minikube   Ready    control-plane   14s   v1.37.0   192.168.49.2   <none>        Debian GNU/Linux 12 (bookworm)   7.0.0-38-generic (arm64)   containerd://2.3.4
 ```
 
-The **internal IP** is the node's address inside the cluster's network. There is no **external IP** — an address reachable from outside — because nothing outside needs to reach this node yet. The OS image, kernel version and container runtime describe the machine. The runtime is **containerd**, the runtime named in the architecture note. None of this needs memorising; the point is that the cluster is running and the pieces are where the architecture says they are.
+The **internal IP** is the node's address inside the cluster's network. There is no **external IP** (an address reachable from outside) because nothing outside needs to reach this node yet. The OS image, kernel version and container runtime describe the machine. The runtime is **containerd**, the runtime named in the architecture note. None of this needs memorising; the point is that the cluster is running and the pieces are where the architecture says they are.
 
 ## The control plane is made of pods
 
@@ -208,7 +208,7 @@ storage-provisioner                1/1     Running   0          28s
 
 `-n kube-system` picks the **namespace** to look in. A namespace is a named partition of one cluster, so that different sets of objects can be kept apart; `kube-system` is the one Kubernetes keeps its own components in. Ordinary work goes into the namespace called `default`, which is where kubectl looks when no namespace is given.
 
-The list is the architecture note made real: the **API server**, **etcd**, the **scheduler** and the **controller manager** of the control plane, plus **kube-proxy** and **CoreDNS**. On this kind of cluster, those components themselves run as pods. `kindnet` is the networking plugin Minikube installs to connect pods to each other, and `storage-provisioner` creates disks when something asks for one — the StatefulSet note relies on it.
+The list is the architecture note made real: the **API server**, **etcd**, the **scheduler** and the **controller manager** of the control plane, plus **kube-proxy** and **CoreDNS**. On this kind of cluster, those components themselves run as pods. `kindnet` is the networking plugin Minikube installs to connect pods to each other, and `storage-provisioner` creates disks when something asks for one; the StatefulSet note relies on it.
 
 ## Your first pod
 
@@ -224,7 +224,7 @@ No resources found in default namespace.
 
 Nothing. Now run one container in one pod. With Docker, you would turn an image into a container with `docker run`. **Here Docker is not used to start the container at all**; you ask Kubernetes, and Kubernetes has its own runtime start it.
 
-Any image would do — a Spring Boot application's image, say. Building one first is a long detour, so use an image that already exists, the way MySQL in the first note ran from a ready-made image rather than one built for it. **nginx** is a web server, often used as a **reverse proxy** — a server that receives requests on an application's behalf and passes them on to it — or as a load balancer, which spreads requests across replicas. Its official image exists ready-made, and the `alpine` variant is a small one. Given just `nginx:alpine`, Kubernetes pulls it from Docker Hub, the public registry, and makes a container from it.
+Any image would do: a Spring Boot application's image, say. Building one first is a long detour, so use an image that already exists, the way MySQL in the first note ran from a ready-made image rather than one built for it. **nginx** is a web server, often used as a **reverse proxy** — a server that receives requests on an application's behalf and passes them on to it — or as a load balancer, which spreads requests across replicas. Its official image exists ready-made, and the `alpine` variant is a small one. Given just `nginx:alpine`, Kubernetes pulls it from Docker Hub, the public registry, and makes a container from it.
 
 ```bash
 kubectl run demo-pod --image=nginx:alpine --port=80
@@ -262,7 +262,7 @@ READY
 └────── containers that are ready
 ```
 
-So `0/1` means the pod exists and its one container is not ready yet — here, because the image was still being pulled. Wait a little; a simple pod gets there in seconds, and a heavier one takes longer.
+So `0/1` means the pod exists and its one container is not ready yet (here, because the image was still being pulled). Wait a little; a simple pod gets there in seconds, and a heavier one takes longer.
 
 Where is it running?
 
@@ -314,7 +314,7 @@ Gone, and nothing brought it back.
 
 ## Why you never run pods like this
 
-That was a demonstration, and in practice nobody manages pods this way — **no creating them by hand and no deleting them by hand**. Look at what just happened. A pod was created directly, and nothing was watching it. Take the order service — a Spring Boot application — running in one pod, and then that pod disappears. Many things can cause it:
+That was a demonstration, and in practice nobody manages pods this way: **no creating them by hand and no deleting them by hand**. Look at what just happened. A pod was created directly, and nothing was watching it. Take the order service (a Spring Boot application) running in one pod, and then that pod disappears. Many things can cause it:
 
 - the node it ran on has a problem;
 - someone deletes the pod;
@@ -339,7 +339,7 @@ flowchart LR
 
 If restarting things by hand were acceptable, Kubernetes would not be needed: Docker can start a container by hand perfectly well. Kubernetes exists so that nobody has to keep track of which container is up and which is down. As a developer or a DevOps engineer, the thing you care about is your application, not the containers. Containerising the application is a step in getting it onto servers, and Kubernetes automates that step the way Jenkins and GitHub Actions automated the deployment process. And production is not three pods: it is pod A, pod B, pod C and hundreds more, possibly half a million containers, and nobody is going to deploy and redeploy those by hand.
 
-What you actually want to say is one sentence: **keep three replicas of this application running.** Desired 3, actual 0 — Kubernetes creates them, ideally on different worker nodes, and the actual count becomes 3. One is lost, actual falls to 2, and Kubernetes creates another. That is the reconciliation loop from the first note, and the component that runs it is the **controller manager** from the architecture note.
+What you actually want to say is one sentence: **keep three replicas of this application running.** Desired 3, actual 0: Kubernetes creates them, ideally on different worker nodes, and the actual count becomes 3. One is lost, actual falls to 2, and Kubernetes creates another. That is the reconciliation loop from the first note, and the component that runs it is the **controller manager** from the architecture note.
 
 ```mermaid
 flowchart LR
@@ -359,7 +359,7 @@ flowchart LR
 ```
 
 > [!question] **Is the controller manager a cron job that checks every few seconds?**
-> It can be pictured that way, but it is not exactly a cron job — a scheduled task run at fixed times. **Checked against the documentation:** a controller is a control loop that watches the shared state of the cluster through the API server and makes changes to move the current state towards the desired state. It reacts to changes as they are reported, rather than waking up on a timer and looking. The effect is the one that matters: a gap between desired and actual is noticed almost immediately. And the controller does not start containers itself; as the architecture note showed, it records that a new pod is needed, the scheduler picks the node, and that node's kubelet has it started.
+> It can be pictured that way, but it is not exactly a cron job (a scheduled task run at fixed times). **Checked against the documentation:** a controller is a control loop that watches the shared state of the cluster through the API server and makes changes to move the current state towards the desired state. It reacts to changes as they are reported, rather than waking up on a timer and looking. The effect is the one that matters: a gap between desired and actual is noticed almost immediately. And the controller does not start containers itself; as the architecture note showed, it records that a new pod is needed, the scheduler picks the node, and that node's kubelet has it started.
 
 > [!question] **Do you define the size and memory of a pod?**
 > Not of the pod as such. You describe the containers, and the pod is created for those containers; what the containers need decides what the pod needs. How much CPU and memory a container may ask for and use is its own subject, outside this note.

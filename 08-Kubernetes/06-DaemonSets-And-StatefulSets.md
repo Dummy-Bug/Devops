@@ -2,7 +2,7 @@ The previous note ended on the question that decides whether a Deployment fits: 
 
 ## Why most applications don't care which pod they get
 
-Three replicas of the order service, on three nodes that may be in three different places — a server in Delhi, one in Mumbai, one in Kolkata. A user sends a request. It can land on any of the three pods, and it makes no difference which. The user's next request can land on a different pod, and that makes no difference either. All three pods contain only the business logic; wherever a request arrives, it is handled the same way.
+Three replicas of the order service, on three nodes that may be in three different places: a server in Delhi, one in Mumbai, one in Kolkata. A user sends a request. It can land on any of the three pods, and it makes no difference which. The user's next request can land on a different pod, and that makes no difference either. All three pods contain only the business logic; wherever a request arrives, it is handled the same way.
 
 That is a **stateless architecture**, a system design idea: **the application instances store nothing about any particular user between requests.** It is how applications are built now, and it is the reason a Deployment can treat its pods as replaceable and place them on whichever node it likes. A pod named A does not need to be on node A; it can be on node B or C, and nothing cares.
 
@@ -48,9 +48,9 @@ flowchart TD
     class C broken
 ```
 
-Three pods exist, so the Deployment is satisfied. The requirement is not: node A has two agents and node C has none. A ReplicaSet does not care where its pods go — that is exactly the property that makes it right for stateless applications, and exactly what makes it wrong here.
+Three pods exist, so the Deployment is satisfied. The requirement is not: node A has two agents and node C has none. A ReplicaSet does not care where its pods go; that is exactly the property that makes it right for stateless applications, and exactly what makes it wrong here.
 
-This was run. A Deployment of three replicas on a two-node cluster put one pod on the first node and two on the second; on a one-node cluster, ten replicas all went onto the same node. Spreading replicas out is a preference, not a promise — the soft spreading default from the first note — and one per node is not a thing a Deployment can be asked for.
+This was run. A Deployment of three replicas on a two-node cluster put one pod on the first node and two on the second; on a one-node cluster, ten replicas all went onto the same node. Spreading replicas out is a preference, not a promise (the soft spreading default from the first note), and one per node is not a thing a Deployment can be asked for.
 
 **The answer.** A **DaemonSet** makes sure that every node, or every node in a chosen subset, runs one copy of a pod. It looks at how many nodes there are and schedules one copy onto each. Five nodes, five copies. Ten nodes, ten.
 
@@ -132,14 +132,14 @@ That is the general shape of a DaemonSet's job: **node-level infrastructure**, e
 It is used far less than a Deployment, but when you need one copy everywhere, nothing else does it.
 
 > [!important] **A DaemonSet pod is not a helper container inside your application's pod.**
-> The pod note described a helper — a sidecar — that lives in the same pod as one application and shares its network and volumes. A DaemonSet is a different thing. Its pod is a **separate pod of its own**, one per node, sitting next to all the application pods on that node rather than inside any of them. A log agent run as a DaemonSet collects the logs of every pod on its node; a log helper run as a sidecar serves only the one application it shares a pod with. Both are ways to keep helper code out of the application's container, at two different scopes: **per node** and **per application pod**.
+> The pod note described a helper (a sidecar) that lives in the same pod as one application and shares its network and volumes. A DaemonSet is a different thing. Its pod is a **separate pod of its own**, one per node, sitting next to all the application pods on that node rather than inside any of them. A log agent run as a DaemonSet collects the logs of every pod on its node; a log helper run as a sidecar serves only the one application it shares a pod with. Both are ways to keep helper code out of the application's container, at two different scopes: **per node** and **per application pod**.
 
 > [!question] **If the log agent depends on the application, can the application and its helper be deployed together the first time?**
-> You never place either of them yourself. You write YAML that says what should exist — three replicas of the main application, and one log agent on every node — and the controllers do the placing. What you control is the description: how many, and which kind of controller.
+> You never place either of them yourself. You write YAML that says what should exist (three replicas of the main application, and one log agent on every node), and the controllers do the placing. What you control is the description: how many, and which kind of controller.
 
 ## The database: the StatefulSet
 
-Now the database itself — MySQL, PostgreSQL, Kafka, ZooKeeper, Redis, Cassandra and their kind. Take MySQL, and suppose you want three replicas of it.
+Now the database itself: MySQL, PostgreSQL, Kafka, ZooKeeper, Redis, Cassandra and their kind. Take MySQL, and suppose you want three replicas of it.
 
 Recall how MySQL ran in the first note: **a database does not keep its data inside its container.** The container is one thing; the data lives on a **volume**, storage outside the container where the data actually sits on disk. So for each database replica, something has to remember which disk belongs to which replica.
 
@@ -163,7 +163,7 @@ flowchart TD
     class D4 broken
 ```
 
-Node B fails. The Deployment sees desired 3 and actual 2 and does what it always does: it creates a **new** pod, with a new random name, on any available node — node D, say. Nothing ties that new pod to disk 2, because a Deployment's pods all come from one identical template and none of them is the one that had disk 2. It ends up with some other storage, disk 4. Every row that replica held is still on disk 2, and **the database no longer uses it**. The data is not necessarily deleted; it is simply cut off from the replica that owned it.
+Node B fails. The Deployment sees desired 3 and actual 2 and does what it always does: it creates a **new** pod, with a new random name, on any available node (node D, say). Nothing ties that new pod to disk 2, because a Deployment's pods all come from one identical template and none of them is the one that had disk 2. It ends up with some other storage, disk 4. Every row that replica held is still on disk 2, and **the database no longer uses it**. The data is not necessarily deleted; it is simply cut off from the replica that owned it.
 
 **A database is stateful by nature**, so it cannot be run as a Deployment. When the replica that used disk 2 comes back, it has to come back attached to disk 2.
 
@@ -195,7 +195,7 @@ flowchart TD
     class P1B step
 ```
 
-In YAML, the new part is `volumeClaimTemplates`. A **PersistentVolumeClaim** is a request for a disk of a given size; the template tells the StatefulSet to make one per pod. A StatefulSet also expects a Service with no cluster address of its own, named in `serviceName` — Services are the next note's subject; this one exists only to give each pod a stable network name.
+In YAML, the new part is `volumeClaimTemplates`. A **PersistentVolumeClaim** is a request for a disk of a given size; the template tells the StatefulSet to make one per pod. A StatefulSet also expects a Service with no cluster address of its own, named in `serviceName`. Services are the next note's subject; this one exists only to give each pod a stable network name.
 
 ```yaml
 # k8s/statefulset.yaml
@@ -245,7 +245,7 @@ spec:
 The `---` separates two objects in one file. The container is again a stand-in that only sleeps, so the test is about the StatefulSet and its disks rather than about MySQL; a real database would use its own image and its own configuration.
 
 > [!info] **This was run, not just read.**
-> Applied on a Minikube cluster, the pods came up in order — `db-0` alone first, then `db-1` and `db-2` — and each got its own claim, named after the template and the pod:
+> Applied on a Minikube cluster, the pods came up in order (`db-0` alone first, then `db-1` and `db-2`), and each got its own claim, named after the template and the pod:
 > ```text
 > NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS
 > data-db-0   Bound    pvc-285967bf-b529-4ca2-93ad-34dda4417372   100Mi      RWO            standard
@@ -255,12 +255,12 @@ The `---` separates two objects in one file. The container is again a stand-in t
 > A row, `order-42`, was written to `/data/row.txt` inside `db-1`. Then `db-1` was deleted. It came back as a genuinely new pod — a different unique ID, and a new IP address, `10.244.0.27` becoming `10.244.0.29` — **but with the same name, the same claim `data-db-1`, and `order-42` still on its disk.** `db-0`'s `/data` was empty: each replica really does have its own disk, not a shared one.
 
 > [!tip] **Going further: ordered startup, and a stable network name.**
-> Some stateful systems care about order: `db-0` must be ready before `db-1` starts, and `db-1` before `db-2`. **Checked against the documentation:** a StatefulSet by default creates pods one at a time in ordinal order, waiting for each to be running and ready, and removes them in reverse — the order the run showed. And through that Service with no cluster address, each pod gets a DNS name of its own that survives recreation: on the check cluster, `db-1.db.default.svc.cluster.local` resolved to the new `db-1`'s address after it came back.
+> Some stateful systems care about order: `db-0` must be ready before `db-1` starts, and `db-1` before `db-2`. **Checked against the documentation:** a StatefulSet by default creates pods one at a time in ordinal order, waiting for each to be running and ready, and removes them in reverse (the order the run showed). And through that Service with no cluster address, each pod gets a DNS name of its own that survives recreation: on the check cluster, `db-1.db.default.svc.cluster.local` resolved to the new `db-1`'s address after it came back.
 
 > [!warning] **A StatefulSet protects the link to the disk, not the disk.**
-> If the node fails, the StatefulSet brings the replica back attached to its old volume — the node broke, not the disk. If the disk itself is lost, that is a different scenario, and nothing in Kubernetes' controllers recovers the data. Backups and the database's own replication handle that.
+> If the node fails, the StatefulSet brings the replica back attached to its old volume: the node broke, not the disk. If the disk itself is lost, that is a different scenario, and nothing in Kubernetes' controllers recovers the data. Backups and the database's own replication handle that.
 
-> [!question] **How do you decide how many replicas you need — from queries per second, from storage?**
+> [!question] **How do you decide how many replicas you need: from queries per second, from storage?**
 > That is a calculation of its own, made per application in production, and it is not covered in this folder. Understand which controller to use first; how many replicas it should keep comes afterwards.
 
 ## Choosing the controller

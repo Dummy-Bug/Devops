@@ -1,10 +1,12 @@
-The last production gap in the Ingress note's table was that applications must not have unrestricted access to the cluster. The two previous notes made the Notes application scale; this one is about **who is allowed to do what** inside the cluster. The Ingress note named the terms in a line — **RBAC**, role-based access control, decides who may do what through the Kubernetes API, and a **service account** is the identity a pod uses when it calls that API. This note teaches both.
+The last production gap in the Ingress note's table was that applications must not have unrestricted access to the cluster. The two previous notes made the Notes application scale; this one is about **who is allowed to do what** inside the cluster. The Ingress note named the terms in a line: **RBAC**, role-based access control, decides who may do what through the Kubernetes API, and a **service account** is the identity a pod uses when it calls that API. This note teaches both.
 
 ## Why permissions matter inside a cluster
 
-Picture a Spring Boot pod and a MySQL pod in one cluster, and a ConfigMap — part of the same cluster — holding the Spring Boot application's configuration, which it reads.
+Picture a Spring Boot pod and a MySQL pod in one cluster, and a ConfigMap (part of the same cluster) holding the Spring Boot application's configuration.
 
-- If the Spring Boot pod can read the ConfigMap, should it also be able to **delete** it? No; nothing about its job requires that.
+One distinction first, because the Notes API from the deployment note already reads a ConfigMap and needs no permission at all to do it. Its values arrive as environment variables through `configMapKeyRef`, and it is the kubelet that fetches them and hands them to the container when it starts; the application itself never talks to the Kubernetes API. The questions below are about the other kind of pod: one whose code calls the Kubernetes API directly, to read ConfigMaps, list pods or change Deployments while it runs.
+
+- If such a pod can read the ConfigMap, should it also be able to **delete** it? No; nothing about its job requires that.
 - Another pod runs some background task. Should it be able to store things in the database? Perhaps not. Delete the database? Certainly not.
 - Should any of them be able to delete the Spring Boot pod? No.
 
@@ -24,10 +26,10 @@ Two different questions get asked of every request:
 
 | Concept | Question | Meaning |
 |---|---|---|
-| **Authentication** | who are you? | establishes the identity making the request — logging in, for example |
+| **Authentication** | who are you? | establishes the identity making the request (logging in, for example) |
 | **Authorization** | what are you allowed to do? | decides whether that identity has permission for the requested action |
 
-On Instagram, a logged-in user is authenticated, but is not authorized to do what an Instagram administrator does. Someone who only watches YouTube videos has an account, but no YouTube Studio — the part of YouTube where videos are uploaded and managed — so they are not authorized to upload or manage videos; they can only watch. **Authorization is about capabilities, not identity.**
+On Instagram, a logged-in user is authenticated, but is not authorized to do what an Instagram administrator does. Someone who only watches YouTube videos has an account, but no YouTube Studio (the part of YouTube where videos are uploaded and managed), so they are not authorized to upload or manage videos; they can only watch. **Authorization is about capabilities, not identity.**
 
 Kubernetes uses both, and RBAC is how it does the second. Take a command that deletes a pod:
 
@@ -55,7 +57,7 @@ flowchart LR
 ```
 
 > [!important] **RBAC governs the Kubernetes API, not your application's endpoints.**
-> It decides whether an identity may get, create or delete Kubernetes objects. It does not decide whether a customer may call an endpoint of the Spring Boot application — that is the application's own security, such as Spring Security, and it is entirely separate.
+> It decides whether an identity may get, create or delete Kubernetes objects. It does not decide whether a customer may call an endpoint of the Spring Boot application; that is the application's own security, such as Spring Security, and it is entirely separate.
 
 ## Four objects
 
@@ -70,7 +72,7 @@ flowchart LR
 
 ### A Role
 
-This Role allows reading ConfigMaps in a namespace called `devops-demo`. Recall from the local cluster note that a **namespace** is a named partition of one cluster, keeping different sets of objects apart; most objects belong to one.
+This Role allows reading ConfigMaps in the namespace `devops-demo`, the one the previous note's resize test created with `kubectl create namespace devops-demo`. Recall from the local cluster note that a **namespace** is a named partition of one cluster, keeping different sets of objects apart; most objects belong to one.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -89,9 +91,9 @@ rules:
 | `namespace: devops-demo` | the Role applies in this namespace only |
 | `resources: ["configmaps"]` | the permissions are about ConfigMaps |
 | `verbs: ["get", "list"]` | reading one ConfigMap by name, and listing them |
-| `apiGroups: [""]` | the API group the resources belong to — see below |
+| `apiGroups: [""]` | the API group the resources belong to (see below) |
 
-What the Role does not say is denied. It grants no `create`, `update` or `delete` on ConfigMaps, and it grants nothing at all on Secrets, Deployments or pods. **RBAC permissions are purely additive — there are no deny rules**, as the Kubernetes documentation puts it — so whatever no rule grants is refused.
+What the Role does not say is denied. It grants no `create`, `update` or `delete` on ConfigMaps, and it grants nothing at all on Secrets, Deployments or pods. **RBAC permissions are purely additive: there are no deny rules**, as the Kubernetes documentation puts it, so whatever no rule grants is refused.
 
 > [!warning] **`apiGroups: [""]` is the core API group only, not every group.**
 > It is tempting to read the empty string as a wildcard. It is not. Kubernetes resources belong to API groups: ConfigMaps, pods, Secrets, Services, nodes and namespaces belong to the original **core** group, whose `apiVersion` is plain `v1`, and the core group's name is the empty string. Deployments belong to the `apps` group, which is why their `apiVersion` is `apps/v1`.
@@ -104,7 +106,7 @@ What the Role does not say is denied. It grants no `create`, `update` or `delete
 
 ### A RoleBinding
 
-Defining a Role does not give it to anybody. A RoleBinding connects the permission definition to an identity — here a service account named `notes-reader`:
+Defining a Role does not give it to anybody. A RoleBinding connects the permission definition to an identity, here a service account named `notes-reader`:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -131,7 +133,16 @@ Anything that calls the Kubernetes API falls into one of two groups:
 | Identity | Example |
 |---|---|
 | **a human** | a DevOps engineer running `kubectl get nodes`, `kubectl get pods`, and the rest |
-| **a workload** | an application inside a pod that needs to query the Kubernetes API — to read a ConfigMap, list pods, or update a Deployment |
+| **a workload** | an application inside a pod that needs to query the Kubernetes API: to read a ConfigMap, list pods, or update a Deployment |
+
+Kubernetes has no objects that represent human users. A person proves who they are with a credential that kubectl sends: on Minikube, a client certificate that `minikube start` created, whose location it recorded in the kubeconfig file. The certificate's common name becomes the username and its organization fields become the groups; that is the whole identity. `kubectl auth whoami` shows it:
+
+```text
+Username   minikube-user
+Groups     [system:masters system:authenticated]
+```
+
+That is why a RoleBinding's `subjects` can name three kinds of identity: a `User` or a `Group` for people, and a `ServiceAccount` for workloads. The Minikube user is in the group `system:masters`, which is bound to the built-in ClusterRole **`cluster-admin`**: a role whose single rule grants every verb on every resource in every API group. That is why everything in this folder so far has simply worked from kubectl.
 
 A **ServiceAccount** is a Kubernetes identity for a workload. The rules are attached to the service account, and every pod that runs as it gets them.
 
@@ -169,7 +180,12 @@ The pod does not log in by hand. In a modern cluster:
 **A service account is an identity. It grants nothing by itself;** the RoleBindings and ClusterRoleBindings that name it decide what it can do.
 
 > [!info] **This was run, not just read.**
-> The ServiceAccount, Role and RoleBinding above were applied in a new namespace, `devops-demo`, created with `kubectl create namespace devops-demo`. `kubectl auth can-i` answers what an identity may do; a service account's identity is `system:serviceaccount:<namespace>:<name>`:
+> The ServiceAccount, Role and RoleBinding above were applied in `devops-demo`, with one ConfigMap and one Secret to try them against:
+> ```bash
+> kubectl create configmap app-settings -n devops-demo --from-literal=MODE=demo
+> kubectl create secret generic db-pass -n devops-demo --from-literal=password=x
+> ```
+> `kubectl auth can-i` answers what an identity may do; a service account's identity is `system:serviceaccount:<namespace>:<name>`:
 > ```bash
 > kubectl auth can-i get configmaps -n devops-demo --as=system:serviceaccount:devops-demo:notes-reader
 > ```
@@ -182,19 +198,34 @@ The pod does not log in by hand. In a modern cluster:
 > | get configmaps in default | no |
 > | list nodes | no |
 >
-> Then from inside a pod running as `notes-reader`, using its own token against the real API server:
+> Then from inside pods, against the real API server. Three test pods ran the `curlimages/curl:8.11.1` image, which contains `curl`, and just slept so that commands could be run in them — one as `notes-reader`, one naming no service account, and one, used further down, with the token switched off:
+> ```yaml
+> apiVersion: v1
+> kind: Pod
+> metadata:
+>   name: api-client
+>   namespace: devops-demo
+> spec:
+>   serviceAccountName: notes-reader
+>   containers:
+>   - name: curl
+>     image: curlimages/curl:8.11.1
+>     command: ["sleep", "3600"]
+> ```
+> The other two, `default-client` and `no-token`, were the same apart from their names: `default-client` without the `serviceAccountName` line, and `no-token` with `automountServiceAccountToken: false` added. Inside a pod, the API server is reachable at `https://kubernetes.default.svc`: every cluster has a Service named `kubernetes` in the `default` namespace whose endpoint is the API server itself — on this cluster `10.96.0.1:443`, forwarding to `192.168.49.2:8443` — and by the Services note's DNS rule, `kubernetes.default.svc` is that Service's name. Run inside `api-client`, using its own token:
 > ```bash
 > D=/var/run/secrets/kubernetes.io/serviceaccount
+> curl --cacert $D/ca.crt -H "Authorization: Bearer $(cat $D/token)" https://kubernetes.default.svc/api/v1/namespaces/devops-demo/configmaps/app-settings
 > curl --cacert $D/ca.crt -H "Authorization: Bearer $(cat $D/token)" https://kubernetes.default.svc/api/v1/namespaces/devops-demo/secrets/db-pass
 > ```
-> Reading the ConfigMap returned `200`; reading a Secret was refused:
+> Reading the ConfigMap returned `200` and the ConfigMap itself; reading the Secret was refused:
 > ```text
 > 403 secrets "db-pass" is forbidden: User "system:serviceaccount:devops-demo:notes-reader" cannot get resource "secrets" in API group "" in the namespace "devops-demo"
 > ```
-> The token's mount declared an expiry of 3,607 seconds — about an hour. The Kubernetes documentation says the kubelet requests a fresh token once the current one is older than 80% of its lifetime, and that reloading it is the application's responsibility — re-reading the file on a schedule, say every five minutes, is usually enough.
+> The token's mount declared an expiry of 3,607 seconds (about an hour). The Kubernetes documentation says the kubelet requests a fresh token once the current one is older than 80% of its lifetime, and that reloading it is the application's responsibility — re-reading the file on a schedule, say every five minutes, is usually enough.
 
 > [!failure] **A pod that names no service account.**
-> A pod without `serviceAccountName` runs as its namespace's `default` service account. Running the same calls from such a pod refused every one of them — even the ConfigMap:
+> A pod without `serviceAccountName` runs as its namespace's `default` service account. Running the same calls from `default-client` refused every one of them — even the ConfigMap:
 > ```text
 > 403 configmaps "app-settings" is forbidden: User "system:serviceaccount:devops-demo:default" cannot get resource "configmaps" in API group "" in the namespace "devops-demo"
 > ```
@@ -222,7 +253,7 @@ and a ClusterRoleBinding to give it to the monitoring identity across the cluste
 > ```bash
 > kubectl create clusterrolebinding node-reader-binding --clusterrole=node-reader --serviceaccount=devops-demo:notes-reader
 > ```
-> it could list nodes — the same request returned `200` — and still could not delete them.
+> it could list nodes (the same request returned `200`) and still could not delete them.
 
 ## Does every Spring Boot application need a service account?
 
@@ -232,7 +263,7 @@ No. A typical Spring Boot application handles HTTP requests and talks to MySQL:
 HTTP request → Spring Boot controller → MySQL
 ```
 
-If it never calls the Kubernetes API — never lists pods, reads ConfigMaps through the API or updates Deployments — it needs no Kubernetes API permissions at all. It still runs as the namespace's `default` service account, and there is no reason to give that account anything.
+If it never calls the Kubernetes API (never lists pods, reads ConfigMaps through the API or updates Deployments), it needs no Kubernetes API permissions at all. It still runs as the namespace's `default` service account, and there is no reason to give that account anything.
 
 **A service account token is for the Kubernetes API only.** It does not let a pod connect to MySQL, and it is not how one pod talks to another. A database connection is ordinary networking to the MySQL Service, with the database's own username and password, as the ConfigMaps and Secrets note set up.
 
@@ -246,7 +277,7 @@ spec:
 ```
 
 > [!info] **This was run, not just read.**
-> In a pod with `automountServiceAccountToken: false`, the token directory did not exist:
+> In `no-token`, the test pod with `automountServiceAccountToken: false`, the token directory did not exist:
 > ```text
 > ls: /var/run/secrets/kubernetes.io/serviceaccount: No such file or directory
 > ```
@@ -258,16 +289,16 @@ spec:
 
 | A compromised Spring Boot container whose workload has | What an attacker gets |
 |---|---|
-| excessive permissions, such as `cluster-admin` | with its Kubernetes credentials, the ability to read or change much of the cluster |
-| least privilege: read ConfigMaps in its own namespace | through that identity, only that — it cannot delete Deployments, read Secrets or touch cluster-wide resources |
+| excessive permissions, such as a binding to `cluster-admin`, the everything role | with its Kubernetes credentials, the ability to read or change much of the cluster |
+| least privilege: read ConfigMaps in its own namespace | through that identity, only that; it cannot delete Deployments, read Secrets or touch cluster-wide resources |
 
 The goal is to limit what an application or a person can do if their credentials are misused. **Least privilege does not stop a pod being broken into; it limits what the break-in is worth.**
 
 > [!question] **Is it mandatory to use RBAC?**
-> On a modern cluster it is already on, and it is not something to bolt on later. Minikube's API server runs with `--authorization-mode=Node,RBAC`, and as the run above showed, a pod's default service account could do nothing at all until a binding gave it something. So the choice is not whether to have RBAC but what to grant: a cluster where every workload is bound to `cluster-admin` has thrown the protection away. Writing narrow Roles is what puts least privilege into practice.
+> On a modern cluster it is already on, and it is not something to bolt on later. Minikube's API server runs with `--authorization-mode=Node,RBAC`: two authorizers, consulted in turn — `Node`, a special-purpose authorizer for the requests kubelets make, and `RBAC` for everyone else. As the run above showed, a pod's default service account could do nothing at all until a binding gave it something. So the choice is not whether to have RBAC but what to grant: a cluster where every workload is bound to `cluster-admin` has thrown the protection away. Writing narrow Roles is what puts least privilege into practice.
 
 > [!question] **What is the difference between DevOps and DevSecOps?**
-> In practice, very little: you need to know all of it. The separation into titles matters less than the responsibility, which should be end to end — from thinking of an idea, to writing it, deploying it, managing it, and making it sustainable and scalable. A developer should know DevOps, and security is part of the same job. Rather than playing with terms, call yourself an engineer and learn what the work requires.
+> In practice, very little: you need to know all of it. The separation into titles matters less than the responsibility, which should be end to end: from thinking of an idea, to writing it, deploying it, managing it, and making it sustainable and scalable. A developer should know DevOps, and security is part of the same job. Rather than playing with terms, call yourself an engineer and learn what the work requires.
 
 ## Summary
 
@@ -276,7 +307,7 @@ The goal is to limit what an application or a person can do if their credentials
 | Authentication | establishing who is making a request |
 | Authorization | deciding whether that identity may do what it asks |
 | RBAC | Kubernetes' authorization of API requests by roles |
-| Role, ClusterRole | a set of permissions — resources and verbs — in a namespace, or cluster-wide |
+| Role, ClusterRole | a set of permissions (resources and verbs) in a namespace, or cluster-wide |
 | RoleBinding, ClusterRoleBinding | the grant of a role to a user, group or service account |
 | ServiceAccount | the identity a workload uses to call the Kubernetes API |
 | Least privilege | only the permissions the job needs |

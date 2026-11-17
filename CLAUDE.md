@@ -62,6 +62,10 @@ Nine types are in use across this track: `[!important]`, `[!info]`, `[!tip]`, `[
 
 **`[!warning]` and `[!danger]` are reserved for genuine danger or a real trap**, never for ordinary emphasis.
 
+### Vary the punctuation
+
+**No single mark does every job.** Set 2026-11-17, after he found the em dash standing in for every kind of join across the vault, about one per hundred words, which reads as monotonous and machine-made. Asides go in commas or parentheses, an explanation or a list goes after a colon, and a second complete thought gets its own sentence. **The em dash stays, for a sharp break or an aside that already contains commas, but a paragraph carries at most one and roughly one join in four is an em dash, not every one.** **A definition hung off a word with a comma is only safe when the sentence has no other commas.** After a list (the order service, MySQL, and a helper, a small companion program…) the comma reads as one more list item, so the definition goes in an em dash or parentheses instead. Removing them without replacing them is the other failure: the sentence still needs its join, so pick the mark that fits.
+
 ### Never hard-wrap a paragraph
 
 **This vault renders a single newline as a line break.** Obsidian's **Strict line breaks** setting is off, so a paragraph hard-wrapped at ~100 columns in the source shows up in reading view with ragged breaks mid-sentence — a break after "with", a break after "any of this".

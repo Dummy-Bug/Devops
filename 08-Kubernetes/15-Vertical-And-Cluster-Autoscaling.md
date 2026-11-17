@@ -1,14 +1,14 @@
-The previous note's autoscaler changed the number of pods. It ended with two loose ends: the HPA asked for eight Notes API pods and one of them stayed `Pending` because the node was full, and it can only spread pods over the nodes that already exist. This note covers the other two rows of the scaling table — making each pod bigger, and making the cluster bigger.
+The previous note's autoscaler changed the number of pods. It ended with two loose ends: the HPA asked for eight Notes API pods and one of them stayed `Pending` because the node was full, and it can only spread pods over the nodes that already exist. This note covers the other two rows of the scaling table: making each pod bigger, and making the cluster bigger.
 
 | Method | What changes | Mechanism |
 |---|---|---|
-| horizontal scaling | the number of pods | Horizontal Pod Autoscaler — the previous note |
+| horizontal scaling | the number of pods | Horizontal Pod Autoscaler (the previous note) |
 | **vertical scaling** | the CPU and memory requests of each pod | **Vertical Pod Autoscaler** |
 | **cluster scaling** | the number of nodes | **Cluster Autoscaler** |
 
 ## The Vertical Pod Autoscaler
 
-Take the same two pods, each requesting 256m CPU and 512 MB of memory, and the same problem: they are not enough for the traffic. Instead of creating a third pod, what if each existing pod were made bigger — its CPU request raised from 256m to 512m, its memory from 512 MB to 1 GB? Nothing new is created; the same pods get more capacity. That is **vertical scaling**, and the Kubernetes mechanism for it is the **Vertical Pod Autoscaler** (VPA). Like the HPA it watches metrics, and like the HPA it works on **requests**.
+Take two pods, each requesting 256m CPU and 512Mi of memory (the round illustrative sizes from the previous note, not the real Notes API's 100m and 128Mi), and the same problem: they are not enough for the traffic. Instead of creating a third pod, what if each existing pod were made bigger — its CPU request raised from 256m to 512m, its memory from 512Mi to 1Gi? Nothing new is created; the same pods get more capacity. That is **vertical scaling**, and the Kubernetes mechanism for it is the **Vertical Pod Autoscaler** (VPA). Like the HPA it watches metrics, and like the HPA it works on **requests**.
 
 Its other use is just as important: finding out what a pod's requests should have been in the first place. A Spring Boot application might start with:
 
@@ -26,7 +26,7 @@ and after watching it run, a VPA might recommend something like this (an illustr
 | CPU | 100m | 400m |
 | Memory | 128Mi | 512Mi |
 
-That guards against **under-provisioning** — requests so low the pod is starved or squeezed onto a node without enough room — and **over-provisioning**, requests far beyond anything the pod uses, which the resource requests note showed blocking other pods from a node that was almost idle.
+That guards against **under-provisioning** (requests so low the pod is starved or squeezed onto a node without enough room) and **over-provisioning**, requests far beyond anything the pod uses, which the resource requests note showed blocking other pods from a node that was almost idle.
 
 > [!important] **By default a VPA changes the limits too.**
 > Each container in a VPA's resource policy has a `controlledValues` setting, and its default is `RequestsAndLimits`: the request is set to the recommendation, and **the limit is scaled in proportion to it**, so a pod with a 100m request and a 500m limit keeps that one-to-five ratio. Only `controlledValues: RequestsOnly` leaves the limits untouched. That is from the VPA's own API definition, version 1.8.1.
@@ -37,7 +37,9 @@ That guards against **under-provisioning** — requests so low the pod is starve
 |---|---|
 | **Recommender** | watches the pods' CPU and memory usage and calculates what their requests should be |
 | **Updater** | checks whether running pods have the recommended resources and, if not, either resizes them in place or **evicts** them so that their controller recreates them |
-| **Admission Controller** | as each new pod is created — including one recreated after the Updater evicted it — sets its requests to the recommended values |
+| **Admission Controller** | as each new pod is created (including one recreated after the Updater evicted it), sets its requests to the recommended values |
+
+Two of those words need a line each. **Admission** is a step inside the API server: after a request has been authenticated and authorized, and before the object is stored, admission controllers may inspect it, change it or reject it. The VPA's Admission Controller plugs into that step for new pods, which is how it can rewrite a pod's requests before the pod exists. And **evict** here is not the eviction from the QoS note. That was a node under memory pressure removing pods in QoS order to save itself; this is the Updater deliberately asking the API server to remove a healthy pod on a node under no pressure at all, so that its Deployment replaces it with a correctly sized one.
 
 ```mermaid
 flowchart LR
@@ -55,7 +57,7 @@ flowchart LR
     class A good
 ```
 
-The Recommender decides **whether** a pod needs more; the Updater decides **when** an existing pod is changed — it need not act the moment usage rises, and it evicts at most a limited share of a Deployment's pods at a time, always allowing at least one; the Admission Controller **applies** the values, but only to pods being created. Together they let the VPA decide whether a pod's capacity should grow, and carry it out.
+The Recommender decides **whether** a pod needs more; the Updater decides **when** an existing pod is changed (it need not act the moment usage rises, and it evicts at most a limited share of a Deployment's pods at a time, always allowing at least one); the Admission Controller **applies** the values, but only to pods being created. Together they let the VPA decide whether a pod's capacity should grow, and carry it out.
 
 ### Why changing a pod's resources used to mean replacing it
 
@@ -65,18 +67,37 @@ Newer versions can resize a running pod **in place**, without recreating it. A V
 
 | `updateMode` | Behaviour |
 |---|---|
-| `Off` | never changes pods; the Recommender still writes its recommendation into the VPA object — a dry run |
+| `Off` | never changes pods; the Recommender still writes its recommendation into the VPA object (a dry run) |
 | `Initial` | sets resources only when a pod is created, never afterwards |
 | `Recreate` | the default: sets resources at creation and also changes running pods by evicting and recreating them |
 | `InPlaceOrRecreate` | tries to resize a running pod in place, and falls back to recreating it when that is not possible |
 | `Auto` | deprecated; currently the same as `Recreate` |
 
 > [!info] **This was run, not just read: a CPU change in place, under traffic.**
-> Is an in-place resize also a moment of unavailability? A running pod — an nginx web server with a 100m CPU request and a 200m limit — was resized while another pod sent it a request every quarter of a second:
+> Is an in-place resize also a moment of unavailability? The test objects went into a namespace of their own, created with `kubectl create namespace devops-demo`; the RBAC note uses the same namespace. A running pod, an nginx web server with a 100m CPU request and a 200m limit:
+> ```yaml
+> apiVersion: v1
+> kind: Pod
+> metadata:
+>   name: resize-demo
+>   namespace: devops-demo
+> spec:
+>   containers:
+>   - name: web
+>     image: nginx:1.27
+>     resources:
+>       requests:
+>         cpu: 100m
+>         memory: 64Mi
+>       limits:
+>         cpu: 200m
+>         memory: 128Mi
+> ```
+> was resized while a second pod, running the `curlimages/curl:8.11.1` image, sent it a request every quarter of a second, 40 in all, to the pod's own IP address. The resize itself is a patch to the pod's `resize` subresource:
 > ```bash
 > kubectl patch pod resize-demo -n devops-demo --subresource resize --patch '{"spec":{"containers":[{"name":"web","resources":{"requests":{"cpu":"300m"},"limits":{"cpu":"400m"}}}]}}'
 > ```
-> The pod's status showed the new values, its restart count stayed at `0`, it stayed `Ready` throughout, and **all 40 requests sent during the resize succeeded**. Inside the container, the kernel's CPU limit had changed to `40000 100000` — 40ms of CPU per 100ms, which is 400m. So for a CPU change, in place really did mean no interruption here. A memory change was not tested, and whether a container must restart for a particular resource change depends on that container's resize policy.
+> The pod's status showed the new values, its restart count stayed at `0`, it stayed `Ready` throughout, and **all 40 requests sent during the resize succeeded**. Inside the container, the kernel's CPU quota — the same per-period quota the resource requests note read for a throttled container — had changed to `40000 100000`: 40ms of CPU per 100ms, which is 400m. So for a CPU change, in place really did mean no interruption here. A memory change was not tested, and whether a container must restart for a particular resource change depends on that container's resize policy.
 
 ### The manifest
 
@@ -105,14 +126,22 @@ spec:
     updateMode: "Off"
 ```
 
-`targetRef` names the Deployment, as in the HPA. `updateMode: "Off"` means **you are not allowed to change the pods; just tell me what they need.** Leave `updatePolicy` out and the mode is `Recreate`, so pods will be evicted to apply the recommendations — something to set deliberately rather than by omission.
+`targetRef` names the Deployment, as in the HPA. `updateMode: "Off"` means **you are not allowed to change the pods; just tell me what they need.** Leave `updatePolicy` out and the mode is `Recreate`, so pods will be evicted to apply the recommendations, something to set deliberately rather than by omission.
+
+The recommendation is stored in the VPA object itself. According to the VPA's quickstart documentation, it is read with:
+
+```bash
+kubectl describe vpa notes-app-vpa
+```
+
+The same documentation notes that, in the modes that apply recommendations, the VPA changes the requests of the running pods, not the pod template in the Deployment's manifest, so the manifest in version control keeps the old numbers until somebody updates it. With `Off`, updating the Deployment's requests from the recommendation is the human step.
 
 > [!info] **The VPA itself was not run.**
-> Its components were not installed on the test cluster, so no live recommendation is shown here. The update modes, the default of `Recreate`, the limit behaviour and the component roles were read from the source and documentation of the VPA, release 1.8.1; the failure above and the in-place resize were run.
+> Its components were not installed on the test cluster, so no live recommendation is shown here, and the `describe` output above has not been seen. The update modes, the default of `Recreate`, the limit behaviour, the component roles and the way recommendations are read were taken from the source and documentation of the VPA, release 1.8.1; the failure above and the in-place resize were run.
 
 ### HPA and VPA together
 
-In production a VPA is rarely left to change pods by itself — the eviction it relies on interrupts the pod, and a busy pod being stopped is exactly what nobody wants. A common combination is **an HPA to change the number of pods, and a VPA in `Off` mode whose recommendations are used to set the requests right**, by updating the Deployment. Nothing connects the two automatically: a VPA's recommendation does not tell the HPA to add pods. If the recommendations say a pod needs more, the usual answer is still more pods, from the HPA.
+In production a VPA is rarely left to change pods by itself: the eviction it relies on interrupts the pod, and a busy pod being stopped is exactly what nobody wants. A common combination is **an HPA to change the number of pods, and a VPA in `Off` mode whose recommendations are used to set the requests right**, by updating the Deployment. Nothing connects the two automatically: a VPA's recommendation does not tell the HPA to add pods. If the recommendations say a pod needs more, the usual answer is still more pods, from the HPA.
 
 The reason to keep them apart is arithmetic. An HPA's utilisation is a percentage of the request, and the VPA changes the request:
 
@@ -121,7 +150,7 @@ The reason to keep them apart is arithmetic. An HPA's utilisation is a percentag
 | before | 200m | 250m | 80% | adds pods |
 | after the VPA raises the request | 200m | 400m | 50% | does nothing |
 
-The load did not change at all; only the denominator did. **Two autoscalers acting on the same CPU or memory signal undo each other's arithmetic.** The VPA's own documentation states it as a limitation: it should not be used with an HPA on the same resource metric, CPU or memory. It can be combined with an HPA on a different one — VPA on memory and HPA on CPU — or with an HPA on custom or external metrics.
+The load did not change at all; only the denominator did. **Two autoscalers acting on the same CPU or memory signal undo each other's arithmetic.** The VPA's own documentation states it as a limitation: it should not be used with an HPA on the same resource metric, CPU or memory. It can be combined with an HPA on a different one (VPA on memory and HPA on CPU) or with an HPA on custom or external metrics.
 
 Two more limitations from that documentation: a VPA does not update pods that are not run by a controller such as a Deployment, and **a recommendation can exceed what any node can provide, leaving the recreated pod `Pending`.** All of this only works while the node has room. When it does not, neither autoscaler can help.
 
@@ -159,7 +188,7 @@ flowchart LR
     class N2 good
 ```
 
-Without automation, the only way out is manual: buy a new server — a new node — add it to the Kubernetes cluster, and let the scheduler use it. If the new node also has 1,000m, the scheduler places pod 4 there, and it takes its 300m.
+Without automation, the only way out is manual: buy a new server (a new node), add it to the Kubernetes cluster, and let the scheduler use it. If the new node also has 1,000m, the scheduler places pod 4 there, and it takes its 300m.
 
 The **Cluster Autoscaler** does that part automatically: it adds a node to the cluster when pods cannot be scheduled, and removes one when it is no longer needed. In the order of events:
 
@@ -175,24 +204,24 @@ The **Cluster Autoscaler** does that part automatically: it adds a node to the c
 
 **The Cluster Autoscaler does not add a node because CPU usage passed 80%.** Its trigger is scheduling: according to its documentation, it grows the cluster when there are pods that failed to schedule on any current node because of insufficient resources, and when adding a node similar to the current ones would help.
 
-So the two can disagree in both directions. A node with four allocatable cores whose pods have requested all four is full to the scheduler even if those pods are nearly idle — the resource requests note showed a pod using 1m blocking a node 10% busy — and another pod that requests CPU will not fit, so a node may be added. The reverse holds too: a node can be busy, with high CPU usage, but if no pod is waiting to be scheduled, the Cluster Autoscaler adds nothing.
+So the two can disagree in both directions. A node's **allocatable** resources are the share of its capacity available to pods (the whole machine minus anything set aside for the operating system and Kubernetes' own daemons), and the scheduler never promises pods more than that. On the Minikube node used in these notes, nothing is set aside, so allocatable equals capacity: 2 CPUs and about 3.8 GiB. A node with four allocatable cores whose pods have requested all four is full to the scheduler even if those pods are nearly idle — the resource requests note showed a pod using 1m blocking a node 10% busy — and another pod that requests CPU will not fit, so a node may be added. The reverse holds too: a node can be busy, with high CPU usage, but if no pod is waiting to be scheduled, the Cluster Autoscaler adds nothing.
 
 ### Where the new node comes from
 
 A node is a machine. If the cluster runs on physical machines in your own room, or on a laptop as Minikube does, **the Cluster Autoscaler can do nothing**: it cannot conjure a second machine. On Minikube, enabling an HPA will never produce a new node.
 
-It works when the cluster runs on a cloud platform it is integrated with. There, a new node is a **virtual machine** — on AWS, an EC2 instance — and creating one is an API call. The cloud company runs enormous physical servers, with a terabyte of RAM and a great many CPUs, and hands each customer a slice of one; each slice is a virtual machine that can become a node. You configure in advance which kinds and sizes of instance may be used, and how many at most, and the Cluster Autoscaler adds and removes nodes within those bounds as load changes.
+It works when the cluster runs on a cloud platform it is integrated with. There, a new node is a **virtual machine** (on AWS, an EC2 instance), and creating one is an API call. The cloud company runs enormous physical servers, with a terabyte of RAM and a great many CPUs, and hands each customer a slice of one; each slice is a virtual machine that can become a node. You configure in advance which kinds and sizes of instance may be used, and how many at most, and the Cluster Autoscaler adds and removes nodes within those bounds as load changes.
 
-It is not limited to AWS. Its documentation lists support for around thirty providers, among them AWS, Azure, Alibaba Cloud, DigitalOcean, Hetzner and Oracle Cloud, plus Cluster API for clusters that manage their own machines.
+It is not limited to AWS. Its documentation lists support for around thirty providers, among them AWS, Azure, Alibaba Cloud, DigitalOcean, Hetzner and Oracle Cloud, plus **Cluster API** — a Kubernetes subproject that provisions and manages the machines of clusters declaratively, through Kubernetes objects, which lets the Cluster Autoscaler work wherever Cluster API can create machines.
 
 > [!question] **Is adding a node time-consuming?**
 > Not the way buying hardware is: no machine is ordered or racked, a virtual machine is created. But it is not instant either. The Cluster Autoscaler's documentation puts its own reaction at under 30 seconds in most cases, and the node's provisioning time is the cloud provider's: on Google's cloud, usually 3 to 4 minutes from the request until pods can be scheduled on the new node, about 5 minutes in all from load rising to new pods running. **A Cluster Autoscaler absorbs growth over minutes. It does not absorb a sudden spike in seconds.** Those numbers are the documentation's, not measured here.
 
 ### Paying for it
 
-A cloud bills for the nodes and the CPU you have provisioned, whether or not anything uses them. It is like a Google Drive plan: buy 100 GB and you pay for 100 GB whether you store anything; upgrade to 200 GB and you pay for 200 GB even with 15 GB stored. So more nodes means a bigger bill. Giving a Cluster Autoscaler room to add nodes is like a small car that seats five, and a manager who has been allowed to buy another car whenever more people turn up — every new car costs money. If cost matters more than capacity, you can cap the cluster at a single machine; then a pod that does not fit simply cannot be created, and nothing more can be done.
+A cloud bills for the nodes and the CPU you have provisioned, whether or not anything uses them. It is like a Google Drive plan: buy 100 GB and you pay for 100 GB whether you store anything; upgrade to 200 GB and you pay for 200 GB even with 15 GB stored. So more nodes means a bigger bill. Giving a Cluster Autoscaler room to add nodes is like a small car that seats five, and a manager who has been allowed to buy another car whenever more people turn up. Every new car costs money. If cost matters more than capacity, you can cap the cluster at a single machine; then a pod that does not fit simply cannot be created, and nothing more can be done.
 
-The same logic works in the other direction. **The Cluster Autoscaler also scales down**, removing a node that is not needed so that it stops costing money. Its documentation gives the conditions: every 10 seconds, if no scale-up is needed, it checks for nodes where the pods' CPU and memory requests add up to less than 50% of the node's allocatable capacity, and whose pods can all be moved to other nodes; a node that stays unneeded for more than **10 minutes** is removed, one busy node at a time, by evicting its pods and marking the node so nothing is scheduled there again. A pod disruption budget that forbids evicting a pod, or certain system pods, can keep a node from being removed. **A node is not removed just because its CPU usage is low** — only if its pods can go somewhere else.
+The same logic works in the other direction. **The Cluster Autoscaler also scales down**, removing a node that is not needed so that it stops costing money. Its documentation gives the conditions: every 10 seconds, if no scale-up is needed, it checks for nodes where the pods' CPU and memory requests add up to less than 50% of the node's allocatable capacity, and whose pods can all be moved to other nodes; a node that stays unneeded for more than **10 minutes** is removed, one busy node at a time, by evicting its pods and marking the node so nothing is scheduled there again. A **PodDisruptionBudget** — an object an application's owner creates to limit how many of its pods may be down at once from voluntary disruptions such as this one — can forbid the eviction and so keep a node from being removed, and so can certain system pods. **A node is not removed just because its CPU usage is low**, only if its pods can go somewhere else.
 
 ## How the three fit together
 

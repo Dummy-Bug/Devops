@@ -1,4 +1,4 @@
-The order service can now run, scale, update and be reached reliably: a Deployment keeps its pods and a Service puts a stable address in front of them. One question is left before this is a whole application. The order service needs configuration — which database to connect to, how much to log, a password. Where should that information live?
+The order service can now run, scale, update and be reached reliably: a Deployment keeps its pods and a Service puts a stable address in front of them. One question is left before this is a whole application. The order service needs configuration: which database to connect to, how much to log, a password. Where should that information live?
 
 ## The problem: configuration baked into the image
 
@@ -10,7 +10,7 @@ spring.datasource.url=jdbc:mysql://mysql-service:3306/bookcart
 logging.level.root=INFO
 ```
 
-The second line is a **JDBC URL** — JDBC being Java's standard interface for connecting to databases — which tells the application's database driver which server, port and database to use. There are also settings that are sensitive, such as a database username and password. The usual approach until now has been to put them into the image, or into environment variables set when the container is built. The image then contains the application code, plus the database address, plus the environment settings, plus the passwords.
+The second line is a **JDBC URL** (JDBC being Java's standard interface for connecting to databases), which tells the application's database driver which server, port and database to use. There are also settings that are sensitive, such as a database username and password. The usual approach until now has been to put them into the image, or into environment variables set when the container is built. The image then contains the application code, plus the database address, plus the environment settings, plus the passwords.
 
 Kubernetes' advice is: **don't put configuration or secrets inside the container.** It is not a reliable technique, for two reasons.
 
@@ -51,7 +51,7 @@ The better model separates the two:
 
 | | Holds |
 |---|---|
-| The image | the application code and its runtime — whatever it needs to run, and nothing that changes per environment |
+| The image | the application code and its runtime: whatever it needs to run, and nothing that changes per environment |
 | The configuration | everything that depends on the environment, supplied to the pod from outside |
 
 Moving from staging to production then changes only the configuration supplied from outside. The image is never rebuilt for it. Kubernetes offers two objects for this, which work the same way and differ in what they are for: the **ConfigMap** and the **Secret**. Following this advice is a choice, not something Kubernetes forces — but these two objects are what it provides for those who follow it.
@@ -60,7 +60,7 @@ Moving from staging to production then changes only the configuration supplied f
 
 > **A ConfigMap stores configuration that is not confidential.**
 
-The values in it are not passwords or private credentials — nothing in it is hidden:
+The values in it are not passwords or private credentials; nothing in it is hidden:
 
 ```text
 APP_MODE=production
@@ -91,7 +91,7 @@ A pod can use a ConfigMap in two ways. **Either way, the configuration never bec
 
 ### As environment variables
 
-Each value can be handed to the container as an environment variable, and the application refers to it exactly the way it refers to any environment variable — `$LOG_LEVEL`, `$DATABASE_HOST`. The application does not need to know that Kubernetes supplied them.
+Each value can be handed to the container as an environment variable, and the application refers to it exactly the way it refers to any environment variable: `$LOG_LEVEL`, `$DATABASE_HOST`. The application does not need to know that Kubernetes supplied them.
 
 ```yaml
       env:
@@ -106,7 +106,7 @@ Read it as: set the environment variable `LOG_LEVEL` from the key `LOG_LEVEL` in
 
 ### As files
 
-Some applications expect a configuration file rather than variables — `application.properties`, `nginx.conf`, `logback.xml`. A ConfigMap can be **mounted** into the pod as a volume, the same idea as the database volumes in the previous notes, so that its keys appear as files:
+Some applications expect a configuration file rather than variables (`application.properties`, `nginx.conf`, `logback.xml`). A ConfigMap can be **mounted** into the pod as a volume, the same idea as the database volumes in the previous notes, so that its keys appear as files:
 
 ```yaml
       volumeMounts:
@@ -145,7 +145,7 @@ flowchart LR
 Neither is always better; use whichever matches what the application expects.
 
 > [!question] **Could the configuration be deployed as a helper container in the pod instead?**
-> No — that would be another container, which is exactly what the configuration is meant to stay out of. The two ways are the ones above: mount it as a volume, or use it as environment variables.
+> No. That would be another container, which is exactly what the configuration is meant to stay out of. The two ways are the ones above: mount it as a volume, or use it as environment variables.
 
 ## Secret: sensitive configuration
 
@@ -177,7 +177,7 @@ Used as an environment variable, the reference names a Secret instead of a Confi
               key: DB_PASSWORD
 ```
 
-Mounted as a volume, each key becomes a file — `/etc/secrets/DB_PASSWORD`, here:
+Mounted as a volume, each key becomes a file (`/etc/secrets/DB_PASSWORD`, here):
 
 ```yaml
     - name: secrets
@@ -237,7 +237,7 @@ So a Kubernetes Secret is **an object designed for sensitive data — not, on it
 | Cloud secret managers, Vault, KMS | a dedicated system holds the secrets and the encryption keys |
 
 > [!tip] **Going further: a changed ConfigMap reaches files, not environment variables.**
-> The ConfigMap was changed while the pod was running — `LOG_LEVEL` and the properties file both moved from `INFO` to `DEBUG`. The mounted file inside the running container showed `logging.level.root=DEBUG` about 70 seconds later, with nothing restarted. The environment variable still read `LOG_LEVEL=INFO`: environment variables are fixed when the container starts. **A change to configuration supplied as environment variables needs the pods replaced** — with a Deployment, that means a rollout.
+> The ConfigMap was changed while the pod was running: `LOG_LEVEL` and the properties file both moved from `INFO` to `DEBUG`. The mounted file inside the running container showed `logging.level.root=DEBUG` about 70 seconds later, with nothing restarted. The environment variable still read `LOG_LEVEL=INFO`: environment variables are fixed when the container starts. **A change to configuration supplied as environment variables needs the pods replaced** — with a Deployment, that means a rollout.
 
 ## The whole application
 

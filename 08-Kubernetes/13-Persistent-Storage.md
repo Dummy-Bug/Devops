@@ -1,10 +1,10 @@
-The previous note gave the application a front door — a hostname, HTTPS and routing through an Ingress controller. The deployment note before it left a worse problem open: delete the MySQL pod, and every note the application had stored was gone. This note is about storage that outlives a pod, which is the second thing a production deployment cannot do without.
+The previous note gave the application a front door: a hostname, HTTPS and routing through an Ingress controller. The deployment note before it left a worse problem open: delete the MySQL pod, and every note the application had stored was gone. This note is about storage that outlives a pod, which is the second thing a production deployment cannot do without.
 
 ## Why the container's own filesystem is not enough
 
 When the Notes API receives `POST /notes?text=Hello`, MySQL writes the row into its database files, in its data directory, `/var/lib/mysql`.
 
-A container runs from an image, and the image itself is read-only — it is built as a stack of layers that never change. A running container adds one **writable layer** of its own on top, and anything it writes goes there. That writable layer belongs to that container. It is **perishable**: when the container is destroyed, the layer and everything in it go with it, and a replacement container starts again from the image with an empty layer of its own. That is exactly what happened in the deployment note: the replacement MySQL pod started with a fresh, empty database.
+A container runs from an image, and the image itself is read-only: it is built as a stack of layers that never change. A running container adds one **writable layer** of its own on top, and anything it writes goes there. That writable layer belongs to that container. It is **perishable**: when the container is destroyed, the layer and everything in it go with it, and a replacement container starts again from the image with an empty layer of its own. That is exactly what happened in the deployment note: the replacement MySQL pod started with a fresh, empty database.
 
 ```mermaid
 flowchart LR
@@ -22,7 +22,7 @@ flowchart LR
 
 With Docker, the answer was a **volume**: storage outside the container, mounted into it at a path, so that a replacement container can be attached to the same volume and find the data still there.
 
-Kubernetes has volumes too — storage mounted into a container at a filesystem path — but different kinds of volume live for different lengths of time. The simplest, an **`emptyDir`**, is created for a pod and lives exactly as long as the pod:
+Kubernetes has volumes too (storage mounted into a container at a filesystem path), but different kinds of volume live for different lengths of time. The simplest, an **`emptyDir`**, is created for a pod and lives exactly as long as the pod:
 
 ```yaml
   volumes:
@@ -54,14 +54,14 @@ Kubernetes splits persistent storage into three objects:
 A **PersistentVolume** is a Kubernetes API object standing for real storage that lives independently of any pod. What is behind it can be many things:
 
 - the disk of a server in the cluster;
-- a cloud disk — on AWS, an **EBS** volume, Amazon's block storage;
-- **network-attached storage**: a storage server reached over the network, such as an NFS share — NFS being a long-established protocol for sharing a filesystem over a network — managed by you rather than by a cloud company;
+- a cloud disk: on AWS, an **EBS** volume, Amazon's block storage;
+- **network-attached storage**: a storage server reached over the network, such as an NFS share (NFS being a long-established protocol for sharing a filesystem over a network), managed by you rather than by a cloud company;
 - any other compatible storage system.
 
 A PV is the Kubernetes representation of the storage, not necessarily the physical disk itself. **The main benefit is decoupling**: the application asks for an amount of storage and never depends on a particular cloud disk's ID.
 
 > [!question] **Is a PersistentVolume inside the pod, with the container?**
-> No — if it were inside the pod, it would be destroyed with the pod, which is the whole problem. It lives outside the pod, and the pod **mounts** it.
+> No. If it were inside the pod, it would be destroyed with the pod, which is the whole problem. It lives outside the pod, and the pod **mounts** it.
 
 A **PersistentVolumeClaim** works like the resource requests from the requests-and-limits note. A container states the CPU and memory it needs, and the scheduler places its pod where those are available. A pod using storage states, through a claim, how much it needs and how it will use it, and Kubernetes finds or creates storage that satisfies the claim.
 
@@ -89,7 +89,7 @@ This claim asks for at least 5 GiB of persistent storage that one node can mount
 Administrator prepares storage → creates PV → developer creates PVC → PVC binds to PV → pod mounts it
 ```
 
-**Dynamic provisioning.** The developer only creates the claim. A **StorageClass** names a **provisioner** — a component that knows how to create storage — and the provisioner creates the storage and its PV on demand:
+**Dynamic provisioning.** The developer only creates the claim. A **StorageClass** names a **provisioner** (a component that knows how to create storage), and the provisioner creates the storage and its PV on demand:
 
 ```text
 Developer creates PVC → StorageClass selects a provisioner → provisioner creates storage → PV created and bound → pod mounts it
@@ -171,7 +171,7 @@ kubectl apply -f k8s/03-mysql.yaml
 `volumes` attaches the storage associated with the claim to the pod, under the name `mysql-storage`. `volumeMounts` decides where that storage appears inside the container. **The mount path matters**: `/var/lib/mysql` is where the MySQL image keeps its database files by default, so mounting the claim there puts every file MySQL writes onto the persistent storage instead of the container's writable layer. The claim must be in the same namespace as the pod.
 
 > [!info] **This was run, not just read — the deployment note's failure, repeated with a claim.**
-> The MySQL Deployment from the deployment note was given the claim above, and the application stored two notes. Then the MySQL pod was deleted, as before. The Deployment created a replacement — `mysql-76dd666d45-zgg65`, ready eleven seconds later — and the application was asked for its notes:
+> The MySQL Deployment from the deployment note was given the claim above, and the application stored two notes. Then the MySQL pod was deleted, as before. The Deployment created a replacement (`mysql-76dd666d45-zgg65`, ready eleven seconds later), and the application was asked for its notes:
 > ```text
 > [{"text":"survives-1","id":1},{"text":"survives-2","id":2}]  [HTTP 200]
 > ```
@@ -234,7 +234,7 @@ Error from server (NotFound): persistentvolumes "pvc-817d0540-726b-4094-9f7c-b98
 > Removing a PVC is not tidying up a pointer: under a `Delete` policy, the storage behind it goes too. For important data, use `Retain`, or be very sure before deleting a claim.
 
 > [!warning] **A PersistentVolume is not a backup.**
-> It keeps data across pod replacement. It does nothing about a disk failing, a table being dropped by mistake, or data being corrupted — those reach the persistent storage just as surely as good writes do. Volumes are far less likely to fail than containers, which run code that can crash for any number of reasons; but they can fail, and they can be copied to replicas. A production database needs a separate backup and recovery plan, beyond its PersistentVolume.
+> It keeps data across pod replacement. It does nothing about a disk failing, a table being dropped by mistake, or data being corrupted: those reach the persistent storage just as surely as good writes do. Volumes are far less likely to fail than containers, which run code that can crash for any number of reasons; but they can fail, and they can be copied to replicas. A production database needs a separate backup and recovery plan, beyond its PersistentVolume.
 
 ## The two production gaps, closed
 

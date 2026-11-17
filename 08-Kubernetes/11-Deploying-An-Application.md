@@ -8,8 +8,8 @@ The application is a small Spring Boot service, a **Notes API**, backed by MySQL
 |---|---|
 | `POST /notes?text=...` | stores a note in MySQL and returns it with its new id |
 | `GET /notes` | returns every stored note |
-| `GET /whoami` | returns the name of the machine handling the request, from the `HOSTNAME` environment variable — locally, `local-machine` |
-| `GET /version` | returns the application version, from the `APP_VERSION` environment variable — locally, `local` |
+| `GET /whoami` | returns the name of the machine handling the request, from the `HOSTNAME` environment variable (locally, `local-machine`) |
+| `GET /version` | returns the application version, from the `APP_VERSION` environment variable (locally, `local`) |
 
 The last two exist only for this demo: inside Kubernetes, `HOSTNAME` is the name of the pod, so `/whoami` shows which replica answered, and `/version` shows which version is running during an update.
 
@@ -61,7 +61,7 @@ Everything runs on Minikube's single node, so all three pods share one machine. 
 
 ## Step 1: get the project onto the server
 
-The project lives on a Mac. Minikube runs inside the Ubuntu virtual machine, so the project has to be copied in. For a remote server, the tool would be **SSH** and a copy over it. This VM is managed by Multipass, which can copy into it directly — `-r` copies a folder recursively:
+The project lives on a Mac. Minikube runs inside the Ubuntu virtual machine, so the project has to be copied in. For a remote server, the tool would be **SSH** and a copy over it. This VM is managed by Multipass, which can copy into it directly; `-r` copies a folder recursively:
 
 ```bash
 multipass transfer -r ~/Desktop/kubernetesDemo devops:/home/ubuntu/
@@ -70,7 +70,7 @@ cd /home/ubuntu/kubernetesDemo
 ls
 ```
 
-The project root holds `Dockerfile`, `pom.xml` and `src/`. A `target/` folder of compiled output, if one came along, is not needed, because the image build compiles everything itself. The Dockerfile is a **multi-stage build** — two `FROM` lines, two stages. The first starts from an image with Maven and a full JDK, copies in the source, and compiles and packages the jar. The second starts from a much smaller image holding only the Java runtime, and copies just the finished jar out of the first stage with `COPY --from=build`. Maven, the compiler and the source never reach the final image, which is smaller for it:
+The project root holds `Dockerfile`, `pom.xml` and `src/`. A `target/` folder of compiled output, if one came along, is not needed, because the image build compiles everything itself. The Dockerfile is a **multi-stage build**: two `FROM` lines, two stages. The first starts from an image with Maven and a full JDK, copies in the source, and compiles and packages the jar. The second starts from a much smaller image holding only the Java runtime, and copies just the finished jar out of the first stage with `COPY --from=build`. Maven, the compiler and the source never reach the final image, which is smaller for it:
 
 ```dockerfile
 # Dockerfile
@@ -108,7 +108,7 @@ minikube image ls | grep notes-app
 docker.io/library/notes-app:v1
 ```
 
-The name `notes-app:v1` follows the endpoints — it is an app for notes — and `v1` leaves room for a version 2 later. Built on the check machine, including downloading Maven's dependencies and compiling, it took 59 seconds.
+The name `notes-app:v1` follows the endpoints (it is an app for notes), and `v1` leaves room for a version 2 later. Built on the check machine, including downloading Maven's dependencies and compiling, it took 59 seconds.
 
 ## Step 3: a folder for the manifests
 
@@ -147,7 +147,7 @@ data:
   DB_URL: "jdbc:mysql://mysql-service:3306/notesdb?allowPublicKeyRetrieval=true&useSSL=false"
 ```
 
-The URL's host is `mysql-service` — **the name of the Service that will stand in front of MySQL, not the address of any pod.** As the Services note showed, a pod's address changes when the pod is replaced; the Service's name does not.
+The URL's host is `mysql-service`: **the name of the Service that will stand in front of MySQL, not the address of any pod.** As the Services note showed, a pod's address changes when the pod is replaced; the Service's name does not.
 
 ```bash
 kubectl apply -f k8s/01-config.yaml
@@ -182,7 +182,7 @@ stringData:
   MYSQL_PASSWORD: change-me
 ```
 
-`type: Opaque` is the generic kind of Secret: arbitrary keys and values, with no particular structure Kubernetes needs to understand. The values are demo placeholders — a real deployment would never commit its passwords to a file.
+`type: Opaque` is the generic kind of Secret: arbitrary keys and values, with no particular structure Kubernetes needs to understand. The values are demo placeholders; a real deployment would never commit its passwords to a file.
 
 ```bash
 kubectl apply -f k8s/02-secret.yaml
@@ -208,7 +208,7 @@ MYSQL_USER:           9 bytes
 
 ## Step 6: MySQL, with a ClusterIP Service
 
-MySQL needs a controller to keep its pod running, and a Service so the application can reach it. Recall the four controllers. A StatefulSet is the right choice for a database, because a recreated database pod must get its own disk back. Setting that up properly means persistent storage and more configuration than a single-node demo can show to any advantage, so **this demo uses a Deployment for MySQL** — and what that costs is shown at the end of this note.
+MySQL needs a controller to keep its pod running, and a Service so the application can reach it. Recall the four controllers. A StatefulSet is the right choice for a database, because a recreated database pod must get its own disk back. Setting that up properly means persistent storage and more configuration than a single-node demo can show to any advantage, so **this demo uses a Deployment for MySQL**, and what that costs is shown at the end of this note.
 
 The Deployment and its Service go in one file, separated by `---`:
 
@@ -293,9 +293,9 @@ spec:
 
 The `env` block is where the previous notes pay off. The official MySQL image reads `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD` and `MYSQL_ROOT_PASSWORD` on first start, to create the database and the user. Each one is pulled from `notes-config` with `configMapKeyRef` or from `mysql-secret` with `secretKeyRef`; nothing is written into the image.
 
-**The readiness probe.** A MySQL container is not usable the moment it starts; the server takes a while to initialise before it accepts connections — about half a minute in the run below. A **readiness probe** is a check Kubernetes runs against a container to decide whether it should receive traffic yet. This one tries to open a TCP connection to port 3306: wait 10 seconds after the container starts, then try every 5 seconds, and mark the pod ready once the port accepts. It only checks that the port is open; it does not run a database query. It is optional, but without it a pod counts as ready as soon as its container has started.
+**The readiness probe.** A MySQL container is not usable the moment it starts; the server takes a while to initialise before it accepts connections (about half a minute in the run below). A **readiness probe** is a check Kubernetes runs against a container to decide whether it should receive traffic yet. This one tries to open a TCP connection to port 3306: wait 10 seconds after the container starts, then try every 5 seconds, and mark the pod ready once the port accepts. It only checks that the port is open; it does not run a database query. It is optional, but without it a pod counts as ready as soon as its container has started.
 
-**Guaranteed, on purpose.** The requests equal the limits, so the MySQL pod is Guaranteed — the QoS note's choice for a critical, steady workload. If the node runs short, the database is the last pod to go.
+**Guaranteed, on purpose.** The requests equal the limits, so the MySQL pod is Guaranteed: the QoS note's choice for a critical, steady workload. If the node runs short, the database is the last pod to go.
 
 **ClusterIP, on purpose.** Only the application's pods need the database. Nothing outside the cluster should reach MySQL directly, so its Service is ClusterIP, and it routes to whichever pod carries `app: mysql`. `port` and `targetPort` are both 3306; they could differ, but there is no benefit here.
 
@@ -336,7 +336,7 @@ mysql-service   ClusterIP   10.106.101.25   <none>        3306/TCP   52s
 The Deployment manages a ReplicaSet, the ReplicaSet keeps the pod, and the pod holds the MySQL container. The pod's QoS class was reported as `Guaranteed`. Inside the cluster, MySQL is now reachable as `mysql-service`, whatever the pod's own address.
 
 > [!question] **If a variable is set in the YAML and also in the image, which value wins?**
-> In the YAML, each variable names exactly where its value comes from — a literal `value`, a ConfigMap key or a Secret key — so there is no ambiguity inside the manifest. **Checked against the documentation:** environment variables set in the pod's configuration override any variables of the same name baked into the container image.
+> In the YAML, each variable names exactly where its value comes from (a literal `value`, a ConfigMap key or a Secret key), so there is no ambiguity inside the manifest. **Checked against the documentation:** environment variables set in the pod's configuration override any variables of the same name baked into the container image.
 
 > [!question] **Does all this YAML have to be memorised?**
 > No. The syntax is boilerplate, the same fields in every manifest. What has to be understood is which configuration each part needs: a database reachable only from inside the cluster needs a ClusterIP Service; an application reached from outside needs something else, which is the next step.
@@ -417,7 +417,7 @@ spec:
 | requests below limits | Burstable QoS: protected less than MySQL, more than a BestEffort pod |
 | `type: NodePort`, `nodePort: 30080` | outside requests to port 30080 on the node reach the Service, which passes them to a pod on 8080 |
 
-`imagePullPolicy: Never` matters because `notes-app:v1` exists only on this node. Real images live in a registry and are pulled from it; this one was never published, so Kubernetes must not try. Notice also that the application gets its database password from the **same** Secret key MySQL used to create the user — one value, read by both.
+`imagePullPolicy: Never` matters because `notes-app:v1` exists only on this node. Real images live in a registry and are pulled from it; this one was never published, so Kubernetes must not try. Notice also that the application gets its database password from the **same** Secret key MySQL used to create the user: one value, read by both.
 
 ```bash
 kubectl apply -f k8s/04-app.yaml
@@ -442,7 +442,7 @@ mysql-service   ClusterIP   10.106.101.25   <none>        3306/TCP         63s
 notes-service   NodePort    10.100.104.72   <none>        8080:30080/TCP   4s
 ```
 
-Three pods on one node — two for the API, one for MySQL — and two Services with two different jobs: `mysql-service` for internal database traffic, `notes-service` to expose the API through the node.
+Three pods on one node (two for the API, one for MySQL) and two Services with two different jobs: `mysql-service` for internal database traffic, `notes-service` to expose the API through the node.
 
 ## Step 8: call the API
 
@@ -476,7 +476,7 @@ curl "http://$MINIKUBE_IP:30080/notes"
 Each request went in through the NodePort Service to one of the API pods, and that pod reached MySQL through the ClusterIP Service. The terminal prints the JSON on one line, without the formatting Postman adds. Port 30080 was reached from the Ubuntu VM that runs Minikube; reaching it from the Mac itself may need a different network setup.
 
 > [!bug] **Ready is not the same as serving.**
-> The rollout reported both API pods available after 2 seconds — and the first request, sent straight away, was refused outright (`curl` exit code 7, connection refused). Spring Boot took about another 9 seconds before it answered. The API pods have **no readiness probe**, so Kubernetes counted them ready the moment their containers started, while the application inside was still booting. MySQL did not have this problem, because its probe held it at `0/1` until its port was open. A readiness probe on the application — an HTTP check against one of its endpoints — would close the gap.
+> The rollout reported both API pods available after 2 seconds — and the first request, sent straight away, was refused outright (`curl` exit code 7, connection refused). Spring Boot took about another 9 seconds before it answered. The API pods have **no readiness probe**, so Kubernetes counted them ready the moment their containers started, while the application inside was still booting. MySQL did not have this problem, because its probe held it at `0/1` until its port was open. A readiness probe on the application (an HTTP check against one of its endpoints) would close the gap.
 
 ### Which pod answered?
 
@@ -514,7 +514,7 @@ Nobody created a pod. The desired count went from 2 to 3, the actual count was 2
 > After scaling, `04-app.yaml` still said `replicas: 2`. Applying that file again puts the count back to 2. For a lasting change, edit the YAML and apply it.
 
 > [!question] **If deleting pods by hand is wrong, how do you scale down?**
-> The same way as up: lower the desired count, with `kubectl scale deployment notes-app --replicas=2` or by editing the YAML and applying it. The ReplicaSet removes pods until the count matches. On the check cluster, going from 3 to 2 simply removed one pod. Scaling a whole system down — fewer servers, with requests rebalanced across those that remain — is a broader system design question.
+> The same way as up: lower the desired count, with `kubectl scale deployment notes-app --replicas=2` or by editing the YAML and applying it. The ReplicaSet removes pods until the count matches. On the check cluster, going from 3 to 2 simply removed one pod. Scaling a whole system down (fewer servers, with requests rebalanced across those that remain) is a broader system design question.
 
 ## Step 10: self-healing
 
@@ -536,7 +536,7 @@ notes-app-6dcd96f98c-twk76   1/1     Running   0          2s
 notes-app-6dcd96f98c-zv4hj   1/1     Running   0          30s
 ```
 
-Desired 3, actual 2, and the ReplicaSet made a new pod — `twk76`, a new name, built from the same template — within two seconds. Nobody ran a command to create it. This is **self-healing**: reconciliation restoring the desired state. It is not autoscaling, which changes the desired count itself in response to load.
+Desired 3, actual 2, and the ReplicaSet made a new pod (`twk76`, a new name, built from the same template) within two seconds. Nobody ran a command to create it. This is **self-healing**: reconciliation restoring the desired state. It is not autoscaling, which changes the desired count itself in response to load.
 
 ## Step 11: a rolling update and a rollback
 
@@ -557,7 +557,7 @@ deployment "notes-app" successfully rolled out
 Application version: v2
 ```
 
-A new ReplicaSet came up with the new template while the old one was scaled to zero — the rolling update from the ReplicaSets note. A real release would change the image tag instead, to something like `notes-app:v2`; the mechanism is identical. And like `kubectl scale`, `kubectl set env` changes the live Deployment, not `04-app.yaml`.
+A new ReplicaSet came up with the new template while the old one was scaled to zero: the rolling update from the ReplicaSets note. A real release would change the image tag instead, to something like `notes-app:v2`; the mechanism is identical. And like `kubectl scale`, `kubectl set env` changes the live Deployment, not `04-app.yaml`.
 
 ```bash
 kubectl rollout history deployment/notes-app
@@ -570,11 +570,11 @@ curl "http://$MINIKUBE_IP:30080/version"
 Application version: v1
 ```
 
-The undo printed the same warning the ReplicaSets note met — a rollback does not update the record of what `kubectl apply` last applied — and the version was back to `v1`. One detail is worth knowing. Rollback returns to the **previous revision**, which is not necessarily the original one. On the check cluster a restart had been done in between, which is a revision too, and the undo went back to that restart's ReplicaSet — still `v1`, but not the first ReplicaSet.
+The undo printed the same warning the ReplicaSets note met — a rollback does not update the record of what `kubectl apply` last applied — and the version was back to `v1`. One detail is worth knowing. Rollback returns to the **previous revision**, which is not necessarily the original one. On the check cluster a restart had been done in between, which is a revision too, and the undo went back to that restart's ReplicaSet (still `v1`, but not the first ReplicaSet).
 
 ## The failure: a database with nowhere to keep its data
 
-With the application running and three notes stored, the MySQL pod was deleted — standing in for a node failure, an eviction, or anything else that replaces a pod. The Deployment did its job and created a new MySQL pod, which became ready. Then:
+With the application running and three notes stored, the MySQL pod was deleted (standing in for a node failure, an eviction, or anything else that replaces a pod). The Deployment did its job and created a new MySQL pod, which became ready. Then:
 
 ```bash
 curl "http://$MINIKUBE_IP:30080/notes"
@@ -596,7 +596,7 @@ And asking the new MySQL pod directly for its tables returned none at all:
 kubectl exec deployment/mysql -- mysql -unotesuser -p<password> notesdb -e "SHOW TABLES;"
 ```
 
-`kubectl exec` runs a command inside a running container — here, the MySQL command-line client inside the MySQL pod. Typing the password on the command line makes MySQL print a warning that it can be insecure, and it is right.
+`kubectl exec` runs a command inside a running container: here, the MySQL command-line client inside the MySQL pod. Typing the password on the command line makes MySQL print a warning that it can be insecure, and it is right.
 
 **What happened.** The old MySQL pod kept its data inside its own container. The Deployment's replacement is a **new** pod with a fresh, empty container: the official image created the `notesdb` database and the user again from the environment variables, but nothing else. The `note` table and every row in it went with the old pod. The application, meanwhile, had never restarted. Hibernate creates missing tables only **at startup**, so the running application kept querying a table that no longer existed.
 
@@ -631,7 +631,7 @@ flowchart TD
 ```
 
 > [!danger] **A database run as a plain Deployment loses its data whenever its pod is replaced.**
-> This is the StatefulSets note's warning, shown live. Restarting the application made the error go away and hid the real problem: the data was already gone. Data that must survive needs storage that outlives the pod — a **PersistentVolume** claimed by the pod, the disk-per-replica that a StatefulSet manages. For a real database, use a StatefulSet with persistent storage, or a managed database service outside the cluster.
+> This is the StatefulSets note's warning, shown live. Restarting the application made the error go away and hid the real problem: the data was already gone. Data that must survive needs storage that outlives the pod: a **PersistentVolume** claimed by the pod, the disk-per-replica that a StatefulSet manages. For a real database, use a StatefulSet with persistent storage, or a managed database service outside the cluster.
 
 ## Which controller, and why
 
@@ -664,10 +664,10 @@ Underneath every step is the idea the whole folder rests on: **you declare the d
 > MaxRAMPercentage = 25.000000
 > UseContainerSupport = true
 > ```
-> Java 21 detected the container's limit and set its maximum heap to 25% of it. A heap size set by hand higher than the limit allows does not raise the limit — the container would simply be OOMKilled when it crossed it, as the requests-and-limits note showed.
+> Java 21 detected the container's limit and set its maximum heap to 25% of it. A heap size set by hand higher than the limit allows does not raise the limit; the container would simply be OOMKilled when it crossed it, as the requests-and-limits note showed.
 
 > [!question] **Two Burstable pods on an 8 GB node: pod 1 requests 4 GB with a limit of 6, pod 2 requests 2 GB with a limit of 3. Pod 1 climbs to 6 GB while pod 2 sits at 2.5. Is it fair if pod 2 is the one evicted?**
-> By the ranking the QoS note described, it should not be pod 2. Both are Burstable, and both use more than they requested, so the next factor decides: how far each one's usage exceeds its request. **Going further, worked from the documented ranking rather than run:** pod 1 is 2 GB over its request, pod 2 only 0.5 GB over, so with equal priorities pod 1 — the one causing the pressure — ranks first for eviction.
+> By the ranking the QoS note described, it should not be pod 2. Both are Burstable, and both use more than they requested, so the next factor decides: how far each one's usage exceeds its request. **Going further, worked from the documented ranking rather than run:** pod 1 is 2 GB over its request, pod 2 only 0.5 GB over, so with equal priorities pod 1 (the one causing the pressure) ranks first for eviction.
 
 > [!question] **Is DevOps in demand?**
 > Quite a lot, and arguably more so now. With AI tools writing a growing share of code and that code going straight to production, more things break there, and the work of deploying, running and fixing systems does not shrink.

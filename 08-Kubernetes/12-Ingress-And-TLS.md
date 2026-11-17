@@ -2,7 +2,7 @@ The previous note deployed a real application — a Spring Boot Notes API with M
 
 ## Why the demo is not production
 
-Recall how a request reached the Notes API. The client sent it to the node's IP address on port 30080 — the NodePort — and the NodePort Service passed it to one of the two Spring Boot pods; the pods reached MySQL through the ClusterIP Service. The whole cluster handled replacement, scaling and routing. And still, this is not what a production application looks like, for several reasons:
+Recall how a request reached the Notes API. The client sent it to the node's IP address on port 30080 (the NodePort) and the NodePort Service passed it to one of the two Spring Boot pods; the pods reached MySQL through the ClusterIP Service. The whole cluster handled replacement, scaling and routing. And still, this is not what a production application looks like, for several reasons:
 
 | Production needs | Kubernetes answer | Covered |
 |---|---|---|
@@ -13,14 +13,14 @@ Recall how a request reached the Notes API. The client sent it to the node's IP 
 
 The terms in the last row are named here and not taught yet: **RBAC**, role-based access control, decides who may do what through the Kubernetes API; a **service account** is the identity a pod uses when it calls that API; a **NetworkPolicy** limits which pods may talk to which; and the **Pod Security** standards limit what a pod may do on its node, such as running as root.
 
-Start with the first. A user sending a request had to know `192.168.49.2:30080`. Nobody types an IP address and a port into a browser. They type a name — `bookcart.in`, `google.com` — and DNS turns it into an address, as the Services note described. **Customers should never have to remember IP addresses.**
+Start with the first. A user sending a request had to know `192.168.49.2:30080`. Nobody types an IP address and a port into a browser. They type a name (`bookcart.in`, `google.com`) and DNS turns it into an address, as the Services note described. **Customers should never have to remember IP addresses.**
 
 > [!important] **Not every application needs Kubernetes.**
 > Before the production features: everything here only matters if Kubernetes is the right tool in the first place. It earns its place when an application has many microservices with many replicas, more pods than people can manage by hand. A real production project usually does not start with Kubernetes; it adopts it when the application has become complicated enough. Three services with two replicas each do not need it, and adding it there is over-engineering.
 
 ## The problem with a port per service
 
-Make it concrete with three microservices — a user service, an order service and a payment service — each with two pods, each reachable from outside through its own NodePort Service:
+Make it concrete with three microservices (a user service, an order service and a payment service), each with two pods, each reachable from outside through its own NodePort Service:
 
 | Service | Reached at |
 |---|---|
@@ -44,11 +44,11 @@ Without Kubernetes, the familiar answer is an **API gateway**: a single entry po
 
 Ingress comes in two parts, and the difference between them is the most important thing in this note.
 
-> **An Ingress resource is a Kubernetes object that declares routing rules for HTTP and HTTPS — which host and path should reach which Service.**
+> **An Ingress resource is a Kubernetes object that declares routing rules for HTTP and HTTPS: which host and path should reach which Service.**
 
 > **An Ingress controller is the software that reads those rules and actually routes the traffic.**
 
-The resource is only configuration. Write one and nothing happens to any traffic; it is a description stored in the cluster like any other object. The controller is a program running in the cluster — usually a reverse proxy — that watches Ingress resources through the Kubernetes API, works out the routing rules from them, receives incoming HTTP and HTTPS requests, and forwards each one to the right Service.
+The resource is only configuration. Write one and nothing happens to any traffic; it is a description stored in the cluster like any other object. The controller is a program running in the cluster (usually a reverse proxy) that watches Ingress resources through the Kubernetes API, works out the routing rules from them, receives incoming HTTP and HTTPS requests, and forwards each one to the right Service.
 
 | Component | Responsibility |
 |---|---|
@@ -105,8 +105,8 @@ flowchart TD
     class P1,P2 good
 ```
 
-1. **DNS resolution.** The browser asks DNS for `api.bookcart.in` and gets back an IP address. Whose address? The public address of the first thing a request reaches — the load balancer. That is the address registered in DNS for the domain, because the load balancer is the entry point.
-2. **External load balancer.** The request reaches the public load balancer — on AWS, the Elastic Load Balancer — which forwards it to the Ingress controller over the cluster's private network. Only the load balancer needs a public address.
+1. **DNS resolution.** The browser asks DNS for `api.bookcart.in` and gets back an IP address. Whose address? The public address of the first thing a request reaches: the load balancer. That is the address registered in DNS for the domain, because the load balancer is the entry point.
+2. **External load balancer.** The request reaches the public load balancer (on AWS, the Elastic Load Balancer), which forwards it to the Ingress controller over the cluster's private network. Only the load balancer needs a public address.
 3. **Ingress controller.** The controller matches the request's host and path against its rules. `/notes` under `api.bookcart.in` matches the rule for the Notes API.
 4. **Service.** The matched backend is the `notes-app` Service, a ClusterIP Service on port 80.
 5. **Pod.** The Service passes the request to one of its pods on port 8080, chosen among those its label selector matches, and the Spring Boot application answers.
@@ -114,7 +114,7 @@ flowchart TD
 Everything from the controller onwards is inside the cluster. **The cloud load balancer and the Ingress controller are not competing parts.** The external load balancer provides the public entry point; the Ingress controller does the HTTP-level routing inside the cluster. A load balancer can also send traffic to several Ingress controllers, to spread the routing work itself.
 
 > [!question] **What address does the load balancer forward to?**
-> The controller's own address, inside the cluster's private network. It can be anything; it is internal. Only the address the browser reaches — the load balancer's public one — has to be public, and that is the one DNS hands out.
+> The controller's own address, inside the cluster's private network. It can be anything; it is internal. Only the address the browser reaches (the load balancer's public one) has to be public, and that is the one DNS hands out.
 
 ## Path-based and host-based routing
 
@@ -128,7 +128,7 @@ api.bookcart.in/orders    → order-service
 api.bookcart.in/payments  → payment-service
 ```
 
-**Host-based routing** gives each service its own hostname — subdomains of one domain:
+**Host-based routing** gives each service its own hostname, subdomains of one domain:
 
 ```text
 api.bookcart.in       → the API
@@ -183,15 +183,15 @@ spec:
 
 | Property | Means |
 |---|---|
-| `kind: Ingress` | an Ingress resource — rules, not a Service |
-| `ingressClassName` | which Ingress controller should apply these rules — `nginx` here, `traefik` on a cluster running Traefik |
+| `kind: Ingress` | an Ingress resource: rules, not a Service |
+| `ingressClassName` | which Ingress controller should apply these rules (`nginx` here, `traefik` on a cluster running Traefik) |
 | `host: api.bookcart.in` | match requests for this hostname |
 | `path: /` | match requests under the root path |
 | `pathType: Prefix` | match the path and everything beneath it: `/notes`, `/whoami`, `/notes/123` |
 | `service.name: notes-app` | the destination Service |
 | `service.port.number: 80` | the **Service's** port, not the container's |
 
-The NodePort Service `notes-service` from the deployment note does not conflict with this one. Two Services may select the same pods — each is just another way in — and in the run it was left in place; once everything goes through the Ingress it can be deleted. The chain is **Ingress → Service port 80 → pod port 8080**. The controller's job ends at the Service; choosing a pod is the Service's job, as before. And this assumes a working Ingress controller of the named class is already installed. The resource alone routes nothing.
+The NodePort Service `notes-service` from the deployment note does not conflict with this one. Two Services may select the same pods (each is just another way in), and in the run it was left in place; once everything goes through the Ingress it can be deleted. The chain is **Ingress → Service port 80 → pod port 8080**. The controller's job ends at the Service; choosing a pod is the Service's job, as before. And this assumes a working Ingress controller of the named class is already installed. The resource alone routes nothing.
 
 > [!info] **This was run, not just read.**
 > Minikube ships an Ingress controller as an add-on:
@@ -210,7 +210,7 @@ The NodePort Service `notes-service` from the deployment note does not conflict 
 > ```text
 > [{"text":"survives-1","id":1},{"text":"survives-2","id":2}]
 > ```
-> There is no DNS record for `api.bookcart.in` on the test machine, so `--resolve` tells `curl` which IP that name should go to, exactly as DNS would. A request for any other host — `admin.bookcart.in`, or the bare IP — got `HTTP 404` from the controller: no rule matched it.
+> There is no DNS record for `api.bookcart.in` on the test machine, so `--resolve` tells `curl` which IP that name should go to, exactly as DNS would. A request for any other host (`admin.bookcart.in`, or the bare IP) got `HTTP 404` from the controller: no rule matched it.
 
 ### More than one service behind one hostname
 
@@ -245,7 +245,7 @@ Rules:
                    /            notes-app:80 (10.244.0.20:8080,10.244.0.21:8080)
 ```
 
-When two paths both match, the longer one wins — `/questions/...` goes to `questions-app`, everything else to `notes-app`.
+When two paths both match, the longer one wins: `/questions/...` goes to `questions-app`, everything else to `notes-app`.
 
 > [!bug] **Ingress forwards the full path. It does not strip the prefix.**
 > The test application answers `/hostname` with its pod's name. Asked for `https://api.bookcart.in/questions/hostname`, it answered with its default page instead:
@@ -272,11 +272,11 @@ flowchart LR
     class S good
 ```
 
-The Spring Boot application keeps listening on plain HTTP on 8080 and knows nothing about certificates; the controller handles the client-facing HTTPS. **Is that safe?** It depends on the application. The traffic after the controller travels on the cluster's private network, where nobody outside can read it, and for most applications that is acceptable. For an application that must be secure end to end — a banking application, say — encryption to the controller is not enough, because it does not encrypt the connection behind it. Then TLS is **re-encrypted**: the controller terminates the browser's TLS and opens a new TLS connection to the backend, which needs certificates and TLS configuration on the backend too. In other designs, TLS terminates even earlier, at the external load balancer. Where it terminates is an infrastructure decision.
+The Spring Boot application keeps listening on plain HTTP on 8080 and knows nothing about certificates; the controller handles the client-facing HTTPS. **Is that safe?** It depends on the application. The traffic after the controller travels on the cluster's private network, where nobody outside can read it, and for most applications that is acceptable. For an application that must be secure end to end (a banking application, say), encryption to the controller is not enough, because it does not encrypt the connection behind it. Then TLS is **re-encrypted**: the controller terminates the browser's TLS and opens a new TLS connection to the backend, which needs certificates and TLS configuration on the backend too. In other designs, TLS terminates even earlier, at the external load balancer. Where it terminates is an infrastructure decision.
 
 ### Configuring it
 
-A TLS certificate and its private key — `tls.crt` and `tls.key` — are stored in a Kubernetes Secret of type `tls`, in the same namespace as the Ingress:
+A TLS certificate and its private key (`tls.crt` and `tls.key`) are stored in a Kubernetes Secret of type `tls`, in the same namespace as the Ingress:
 
 ```bash
 kubectl create secret tls notes-tls --cert=tls.crt --key=tls.key
@@ -329,18 +329,18 @@ The controller uses `notes-tls` for HTTPS on that hostname. **The certificate mu
 > ```text
 > [{"text":"survives-1","id":1},{"text":"survives-2","id":2}]
 > ```
-> **Without** `--cacert`, `curl` refused, because nothing vouches for a self-signed certificate — the reason a real certificate must come from an authority clients trust:
+> **Without** `--cacert`, `curl` refused, because nothing vouches for a self-signed certificate (the reason a real certificate must come from an authority clients trust):
 > ```text
 > curl: (60) SSL certificate OpenSSL verify result: self-signed certificate (18)
 > ```
-> And plain HTTP to the same host was now redirected to HTTPS — ingress-nginx's behaviour once TLS is configured for a host:
+> And plain HTTP to the same host was now redirected to HTTPS, ingress-nginx's behaviour once TLS is configured for a host:
 > ```text
 > http: HTTP 308 -> https://api.bookcart.in/notes
 > ```
 
 ## Do we still need an API gateway?
 
-If an Ingress controller routes by path and terminates TLS, is an API gateway still needed? The answer is yes or no, and it depends on the architecture — the API gateway, the load balancer and the Ingress controller overlap a great deal.
+If an Ingress controller routes by path and terminates TLS, is an API gateway still needed? The answer is yes or no, and it depends on the architecture: the API gateway, the load balancer and the Ingress controller overlap a great deal.
 
 **Without Kubernetes.** Three microservices, each running in Docker containers on two servers. The client's request goes to the API gateway, which reads the path and sends `/users` to the user service's load balancer, `/payments` to the payment service's and `/orders` to the order service's; each load balancer picks one of its two servers. No Ingress anywhere, because there is no cluster. When a container crashes, a person runs `docker run` again from the image. With two replicas of three services, that is manageable.
 
@@ -369,13 +369,13 @@ flowchart LR
     class SV1,PD good
 ```
 
-In the second design, the Ingress controller already does the API gateway's main job — forwarding requests by path — and can terminate TLS. A gateway is no longer required for routing. One can still be placed in front of the cluster, between the client and the load balancer, but its role narrows to what the controller does not do: rate limiting (capping how many requests a client may send in a given time), adding headers, idempotency checks — making sure a request repeated by mistake is not processed twice — and, depending on the product, API keys, usage plans, developer portals and analytics. Both may handle authentication or rate limiting, depending on which products are used, so the two are not automatically interchangeable.
+In the second design, the Ingress controller already does the API gateway's main job (forwarding requests by path) and can terminate TLS. A gateway is no longer required for routing. One can still be placed in front of the cluster, between the client and the load balancer, but its role narrows to what the controller does not do: rate limiting (capping how many requests a client may send in a given time), adding headers, idempotency checks — making sure a request repeated by mistake is not processed twice — and, depending on the product, API keys, usage plans, developer portals and analytics. Both may handle authentication or rate limiting, depending on which products are used, so the two are not automatically interchangeable.
 
 > [!question] **Is Kubernetes just for running Docker across many servers?**
-> Docker alone can run an application on many servers; that is what was done before Kubernetes existed. What Docker alone does not do is manage the containers: when one of four Spring Boot containers crashes, somebody runs a new one from the image. Kubernetes' core job is managing those containers — in pods — and keeping the desired number running. Ingress is part of what is needed when it does that in production: a way for outside requests to get in.
+> Docker alone can run an application on many servers; that is what was done before Kubernetes existed. What Docker alone does not do is manage the containers: when one of four Spring Boot containers crashes, somebody runs a new one from the image. Kubernetes' core job is managing those containers (in pods) and keeping the desired number running. Ingress is part of what is needed when it does that in production: a way for outside requests to get in.
 
 > [!info] **Going further: the ingress-nginx controller has been retired.**
-> The controller Minikube's add-on installs is the community **ingress-nginx** project. The Kubernetes project announced its retirement in November 2025 and confirmed it in January 2026: from **March 2026** there are no further releases, bug fixes or security patches, though existing installations keep running. The announcements recommend migrating to **Gateway API** — a newer Kubernetes routing model — or to another Ingress controller. The Ingress API itself is not deprecated, and other NGINX-based and Traefik controllers continue. Checked 2026-11-16 against the Kubernetes blog posts of 2025-11-11 and 2026-01-29, read through a summary because the pages' text was truncated. To see whether a cluster relies on it:
+> The controller Minikube's add-on installs is the community **ingress-nginx** project. The Kubernetes project announced its retirement in November 2025 and confirmed it in January 2026: from **March 2026** there are no further releases, bug fixes or security patches, though existing installations keep running. The announcements recommend migrating to **Gateway API** (a newer Kubernetes routing model) or to another Ingress controller. The Ingress API itself is not deprecated, and other NGINX-based and Traefik controllers continue. Checked 2026-11-16 against the Kubernetes blog posts of 2025-11-11 and 2026-01-29, read through a summary because the pages' text was truncated. To see whether a cluster relies on it:
 > ```bash
 > kubectl get pods --all-namespaces --selector app.kubernetes.io/name=ingress-nginx
 > ```

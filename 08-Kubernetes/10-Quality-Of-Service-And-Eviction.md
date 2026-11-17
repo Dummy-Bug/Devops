@@ -15,7 +15,7 @@ Scheduling looks at requests, not limits: 2 + 2 + 2 + 2 = 8 GB, which the node h
 
 Now the pods get busy. Pods A and B grow beyond their requests and between them use 5 GB, which their limits allow. Pods C and D are quiet, at 1 GB each. Total: 7 GB. So far there is still room.
 
-Then pod D grows to 2 GB, exactly its request — it has not even used what was set aside for it. Total: 8 GB. Or it grows only part of the way, and the node is down to 300 or 400 MB free, which is already critically low. Either way:
+Then pod D grows to 2 GB, exactly its request; it has not even used what was set aside for it. Total: 8 GB. Or it grows only part of the way, and the node is down to 300 or 400 MB free, which is already critically low. Either way:
 
 ```mermaid
 flowchart TD
@@ -37,7 +37,7 @@ flowchart TD
 No pod has broken its limit, so the previous note's OOMKilled-at-the-limit does not apply. Yet none of them can grow by even a little: pod A is allowed to 3 GB and cannot get there, and pod C has not even reached its 2 GB request and cannot either. The node itself is in danger. **Kubernetes has to make a tough decision: someone needs to go.** One pod has to be killed to protect the node and the others; if it belongs to a Deployment, its replacement will be placed somewhere with room, as the earlier notes showed. But on this node, now, one of A, B, C and D must be removed.
 
 > [!question] **Couldn't the applications just run garbage collection more often?**
-> That frees memory only if the memory is garbage — objects nothing refers to any more. Here the memory is genuinely in use: live variables, live data. Collecting more often might free a few hundred megabytes and leave the node still critically low. It does not change the decision.
+> That frees memory only if the memory is garbage (objects nothing refers to any more). Here the memory is genuinely in use: live variables, live data. Collecting more often might free a few hundred megabytes and leave the node still critically low. It does not change the decision.
 
 > [!question] **Wouldn't Kubernetes just redeploy one of the pods to a bigger server?**
 > It can, and the scheduler will place a replacement wherever there is room. But that is the next step. The question here is what happens on **this** node first: which pod gets removed so the node survives. How large systems scale across many machines — a service like Netflix running many servers behind many load balancers, spread by techniques such as consistent hashing, a way of assigning requests or data to servers that moves as little as possible when servers are added or removed — is system design, a level above one node's limits.
@@ -49,11 +49,11 @@ Killing a pod at random would be wrong, because pods are not equally important. 
 | Pod | Runs |
 |---|---|
 | Pod A | the production payment service |
-| Pod B | a background task — a one-off data migration, say |
+| Pod B | a background task (a one-off data migration, say) |
 | Pod C | the order service |
 | Pod D | the user service |
 
-Nobody wants the payment service, the order service or the user service stopped. The background task can be run again later or somewhere else. Pod B is the obvious one to remove. Kubernetes cannot know what each pod does, but it needs some way to rank them, and the way it uses is the **Quality of Service class** — **QoS**.
+Nobody wants the payment service, the order service or the user service stopped. The background task can be run again later or somewhere else. Pod B is the obvious one to remove. Kubernetes cannot know what each pod does, but it needs some way to rank them, and the way it uses is the **Quality of Service class** (**QoS**).
 
 ## The three QoS classes
 
@@ -71,7 +71,7 @@ Kubernetes puts every pod into one of three classes, based entirely on the reque
           memory: "256Mi"
 ```
 
-**Burstable**: at least one container has some CPU or memory request or limit, but the pod does not meet the Guaranteed conditions. The usual case is a request lower than the limit — the normal-usage-and-spikes setting from the previous note:
+**Burstable**: at least one container has some CPU or memory request or limit, but the pod does not meet the Guaranteed conditions. The usual case is a request lower than the limit, the normal-usage-and-spikes setting from the previous note:
 
 ```yaml
       resources:
@@ -83,7 +83,7 @@ Kubernetes puts every pod into one of three classes, based entirely on the reque
           memory: "512Mi"
 ```
 
-A pod with only some of the values set — a CPU request and nothing else, for instance — is also Burstable.
+A pod with only some of the values set (a CPU request and nothing else, for instance) is also Burstable.
 
 **BestEffort**: no container in the pod has any CPU or memory request or limit at all. There is simply no `resources` section:
 
@@ -108,7 +108,7 @@ A pod with only some of the values set — a CPU request and nothing else, for i
 > burstable    Burstable    map[cpu:100m memory:64Mi]   map[cpu:500m memory:128Mi]
 > besteffort   BestEffort   <none>                      <none>
 > ```
-> The class is written into the pod, as `.status.qosClass`; nobody assigns it by hand. And a pod given only limits — which the previous note showed get copied into the requests — comes out Guaranteed.
+> The class is written into the pod, as `.status.qosClass`; nobody assigns it by hand. And a pod given only limits (which the previous note showed get copied into the requests) comes out Guaranteed.
 
 ### Why the classes rank the way they do
 
@@ -140,7 +140,7 @@ So in the four-pod example, if the background task were the BestEffort pod and t
 
 **This happens only under node pressure.** As long as the node has enough, every pod runs, whatever its class. QoS is not a running priority; it is a ranking that matters only at the moment something has to be given up.
 
-**And the pressure is about memory, not CPU.** **Checked against the documentation:** the signals that make a node start evicting are running short of memory, of disk space, or of process IDs. CPU is not among them. A node whose pods all want more CPU than it has simply shares the CPU out more thinly — the throttling from the previous note — and nobody is evicted for it, because CPU time, unlike memory, can always be handed out in smaller slices.
+**And the pressure is about memory, not CPU.** **Checked against the documentation:** the signals that make a node start evicting are running short of memory, of disk space, or of process IDs. CPU is not among them. A node whose pods all want more CPU than it has simply shares the CPU out more thinly (the throttling from the previous note), and nobody is evicted for it, because CPU time, unlike memory, can always be handed out in smaller slices.
 
 > [!info] **The ranking is visible inside the containers.**
 > On Linux, every process carries an **OOM score adjustment**, a number from −1000 to 1000 that tells the kernel's out-of-memory killer how strongly to prefer killing it when memory runs out: the higher, the sooner. Kubernetes sets it from the pod's QoS class. Read from the first process in each of the three pods above:
@@ -152,14 +152,14 @@ So in the four-pod example, if the background task were the BestEffort pod and t
 > BestEffort is at the maximum, so it is the kernel's first choice. Guaranteed is at −997, so it is almost never chosen. Burstable sits close to BestEffort.
 
 > [!important] **Guaranteed is the strongest protection, not an absolute one.**
-> QoS is the main factor, not the only one. **Checked against the documentation:** when the kubelet evicts pods under node pressure, it ranks them by whether each pod's usage exceeds its requests, by the pod's **priority** — a separate setting that marks how important a pod is — and by how far its usage exceeds its requests. Because a Guaranteed pod's usage can never exceed its request, it naturally ranks last; a BestEffort pod has no requests, so any usage exceeds them, and it ranks first. That is where the class order comes from. **Guaranteed does not mean a pod can never be evicted or killed** — it means it is the last candidate.
+> QoS is the main factor, not the only one. **Checked against the documentation:** when the kubelet evicts pods under node pressure, it ranks them by whether each pod's usage exceeds its requests, by the pod's **priority** (a separate setting that marks how important a pod is), and by how far its usage exceeds its requests. Because a Guaranteed pod's usage can never exceed its request, it naturally ranks last; a BestEffort pod has no requests, so any usage exceeds them, and it ranks first. That is where the class order comes from. **Guaranteed does not mean a pod can never be evicted or killed** — it means it is the last candidate.
 
 > [!question] **Isn't it possible for a Burstable pod to be more stable than a BestEffort one, or even than a Guaranteed one?**
 > Yes, in a particular case. A Burstable pod might in practice use the same steady amount all day. The classes are a general rule, not a guarantee about any one application. Kubernetes has to make the decision somehow, without knowing what each application does, and the requests and limits are the only description it has. Declared as identical, they describe a steady application; declared apart, they describe one that bursts; left out, they describe nothing.
 
 ## Choosing a class on purpose
 
-This is the reason, promised in the previous note, that some pods should have their request equal to their limit. **Making a pod Guaranteed costs capacity and buys protection.** The node sets aside the pod's full maximum at all times, and in return it is the last pod to be evicted when the node runs short. That is the right trade for a small number of critical, steady workloads — the payment service in the four-pod example — and the wrong one for everything, because if every pod reserved its peak, the node would fit far fewer of them.
+This is the reason, promised in the previous note, that some pods should have their request equal to their limit. **Making a pod Guaranteed costs capacity and buys protection.** The node sets aside the pod's full maximum at all times, and in return it is the last pod to be evicted when the node runs short. That is the right trade for a small number of critical, steady workloads (the payment service in the four-pod example), and the wrong one for everything, because if every pod reserved its peak, the node would fit far fewer of them.
 
 | You want | Set | Class |
 |---|---|---|
@@ -184,7 +184,7 @@ flowchart TD
 
 Every failure in these two notes was found with the same three commands, and they are the usual starting point when an application on Kubernetes is not working.
 
-**`kubectl get pods`** shows each pod's status — `Running`, `Pending`, `OOMKilled`, `CrashLoopBackOff` — and how many times it has restarted. `kubectl get` also lists deployments, services and nodes, and `kubectl get all` lists the common kinds in the namespace, though not literally every kind of object.
+**`kubectl get pods`** shows each pod's status (`Running`, `Pending`, `OOMKilled`, `CrashLoopBackOff`) and how many times it has restarted. `kubectl get` also lists deployments, services and nodes, and `kubectl get all` lists the common kinds in the namespace, though not literally every kind of object.
 
 **`kubectl describe pod <name>`** shows the pod in detail: the node it was assigned to, its IP, its containers and images, its ports, its requests and limits, each container's current and last state, its restart count, its volumes and its conditions. At the bottom are its **events**, which most often say why a pod cannot start. That is where `FailedScheduling ... Insufficient cpu` appeared for the pending pod, and `Last State: Terminated, Reason: OOMKilled, Exit Code: 137` for the one that crossed its memory limit.
 
