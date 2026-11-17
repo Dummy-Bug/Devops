@@ -33,7 +33,7 @@ The user is a backend engineer (Java/Spring, Python/FastAPI) with ~2.6 years' ex
 - **Folders are numbered in READING order — the order he should study them in.** He renumbered them himself on 2026-08-20 for exactly that reason: the number tells him what to read first. So far reading order and course order agree; **if the course ever teaches a subject out of the order it should be learned, the folder number follows the reading order and the class mapping lives in this file rather than in the note.**
 - **Notes INSIDE a folder stay in class order.** Folder number = what to read first; note number = which class it came from.
 - A folder is created when its module starts. Gaps in numbering mean a module not yet reached.
-- **Images are embedded by absolute vault path** — `![[Devops/01-Module/Images/file.png]]`. Any folder rename must rewrite every embed in the same operation.
+- **Images are embedded by full path from this vault's root**, as `![[01-Module/Images/file.png]]`, with no `Devops/` prefix. **He reads from `~/Desktop/Devops` as its own Obsidian vault** (set 2026-11-17), so a `Devops/...` path, written for the old `~/Desktop/wiki` vault, resolves to nothing here. Any folder rename must rewrite every embed in the same operation.
 > [!important] **One flat folder per subject — these are standing preferences, learned the hard way.**
 > - **One folder per subject, not per class.** Three classes of Linux is one subject.
 > - **No `00-Syllabus.md` files.** Put currency checks and scope caveats inside the notes they belong to.
@@ -109,7 +109,7 @@ class J,J1 good
 
 **If every node in a diagram ends up in one class, the colour is saying nothing.** That is a signal the diagram has no argument in it — either find the contrast it is meant to show, or leave it unstyled rather than painting it uniformly.
 
-Sequence diagrams take no node styling and are left alone.
+**Sequence diagrams take no node styling, but they are not left grey.** Set 2026-11-17, after he found an unstyled one pale next to the coloured flowcharts. Group the participants into `box rgba(...)` bands in the palette's stroke colours at 0.45 opacity (`rgba(75,85,99,0.45)` for the caller's side, `rgba(47,110,166,0.45)` for the mechanism, `rgba(176,138,46,0.45)` for an intermediate stage), turn on `autonumber` when the reader will trace steps, and stretch a `Note over` across several participants so it does not collapse into a one-word-wide column. Break long participant names with `<br/>` to keep the width down, keep every message label to one short line (Pele wraps anything longer between neighbouring participants), keep a note inside one band rather than straddling two, and turn off the repeated participant row at the bottom with a frontmatter `config:` block setting `sequence: mirrorActors: false`. The reference is the request trace at the end of `08-Kubernetes/02-The-Cluster-Architecture.md`.
 
 ### Images
 

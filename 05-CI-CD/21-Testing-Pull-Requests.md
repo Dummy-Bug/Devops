@@ -66,7 +66,7 @@ Stop here for a moment, because what exists at this point is already a working, 
 
 The proposal goes up as a pull request in the ordinary way: a branch, a change, a push, and a pull request against `master`. The check appears on the pull request straight away, and while it runs the page looks like this:
 
-![[Devops/05-CI-CD/Images/pr-check-running.png]]
+![[05-CI-CD/Images/pr-check-running.png]]
 
 Three things on that screen are the whole mechanism. The check is named `PR Tests / tests (pull_request)` — the workflow's `name`, then the job's name, then the event that triggered it, which is the practical reason both names are worth choosing carefully. The status is amber and says the check has started. And **the merge button is greyed out**: not hidden, not disabled forever, just not yet, because the answer to whether this change is safe is still being worked out.
 
@@ -88,7 +88,7 @@ The merge button turns green and becomes the obvious thing to press.
 
 Opening the run itself shows the steps, with a time against each:
 
-![[Devops/05-CI-CD/Images/workflow-run-steps.png]]
+![[05-CI-CD/Images/workflow-run-steps.png]]
 
 **There are six steps there and you only wrote three.** The three you wrote are in the middle — Checkout Code, Java Setup, Run Unit Tests — and the other three were added for you.
 

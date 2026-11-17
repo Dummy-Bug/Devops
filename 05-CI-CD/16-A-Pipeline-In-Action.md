@@ -32,15 +32,15 @@ Creating one:
 1. On the dashboard, **New Item**.
 2. Give it a name — the repository's name is the natural choice — and choose **Multibranch Pipeline**, then **OK**.
 
-![[Devops/05-CI-CD/Images/new-item.png]]
+![[05-CI-CD/Images/new-item.png]]
 
 3. Under **Branch Sources**, add the Git source and enter the repository's address, with **Discover branches** enabled so it finds them all.
 
-![[Devops/05-CI-CD/Images/branch-sources.png]]
+![[05-CI-CD/Images/branch-sources.png]]
 
 4. Under **Scan Multibranch Pipeline Triggers**, tick **Periodically if not otherwise run** and choose an interval.
 
-![[Devops/05-CI-CD/Images/scan-triggers.png]]
+![[05-CI-CD/Images/scan-triggers.png]]
 
 5. Save.
 
@@ -70,7 +70,7 @@ And a build can always be started by hand: every pipeline has a **Build Now** bu
 
 After saving, Jenkins scans the repository and finds one branch, `master`, containing a `Jenkinsfile`. It starts that branch's **build #1**. The pipeline's own page lists every branch it has found, one row each, with the result of its latest build:
 
-![[Devops/05-CI-CD/Images/branches.png]]
+![[05-CI-CD/Images/branches.png]]
 
 The green tick in **S** is the last build's status. The sun in **W**, for weather, summarises the recent builds — sunny when they have all passed, clouding over as more of them fail. The play button at the end of the row is **Build Now** for that branch.
 

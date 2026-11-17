@@ -182,7 +182,7 @@ To reach it, point a browser at the server's address and that port. The importan
 
 The first time the dashboard opens, Jenkins refuses to go further until you **prove you own the server it is running on**. The page it shows instead is this one:
 
-![[Devops/05-CI-CD/Images/unlock-jenkins.png]]
+![[05-CI-CD/Images/unlock-jenkins.png]]
 
 The proof is a file. During installation Jenkins generated a long random password and wrote it into a file on the server that only an administrator can read:
 
@@ -210,13 +210,13 @@ This happens once. When setup finishes, Jenkins deletes the password file — ru
 
 The setup wizard then offers two choices: **install suggested plugins**, or **select plugins to install** yourself.
 
-![[Devops/05-CI-CD/Images/customize-jenkins.png]]
+![[05-CI-CD/Images/customize-jenkins.png]]
 
 **Take the suggested plugins.** It takes a while — five or ten minutes is normal — and it is worth the wait. Much of what Jenkins can do comes from plugins, and a plugin you skipped now does not announce itself as missing; it surfaces weeks later as a pipeline failing to deploy for a reason that takes an afternoon to trace back to a plugin that was never installed. Installing the recommended set up front removes that entire category of problem.
 
 While it runs, the wizard shows every plugin in the set as a tile, ticking each one off as it lands, with the individual downloads — including the libraries each plugin depends on, marked `**` — scrolling on the right. Several of the tiles are ones the rest of this folder relies on: **Pipeline** runs a `Jenkinsfile`, **Git** lets Jenkins clone a repository, **GitHub Branch Source** is what a multibranch pipeline on GitHub is built from, and **Timestamper** puts a time on every line of a build's log.
 
-![[Devops/05-CI-CD/Images/installing-plugins.png]]
+![[05-CI-CD/Images/installing-plugins.png]]
 
 These screens are from Jenkins 2.568.3. The exact list of suggested plugins changes between releases, so a newer version may show a slightly different grid.
 

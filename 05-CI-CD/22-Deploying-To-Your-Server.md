@@ -18,7 +18,7 @@ uname -m
 
 On the Multipass virtual machine used in these notes this reports `aarch64`, the 64-bit ARM architecture, so the ARM64 download is the right one.
 
-![[Devops/05-CI-CD/Images/new-self-hosted-runner.png]]
+![[05-CI-CD/Images/new-self-hosted-runner.png]]
 
 **Set the runner image and the architecture before copying anything.** The commands underneath are generated from those two choices — the page rewrites the download URL and the archive name the moment either changes. Copying the x64 commands and correcting them by hand afterwards is the usual way to end up with a runner that downloads without complaint and then refuses to start.
 

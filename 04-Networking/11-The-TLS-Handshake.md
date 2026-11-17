@@ -150,7 +150,7 @@ What replaces step 5 is a mechanism where **neither side sends the secret at all
 
 ### What the real sequence looks like
 
-![[Devops/04-Networking/Images/tls13-handshake-timeline.png]]
+![[04-Networking/Images/tls13-handshake-timeline.png]]
 
 Two things in that picture are worth reading off deliberately, because both differ from the seven steps above.
 

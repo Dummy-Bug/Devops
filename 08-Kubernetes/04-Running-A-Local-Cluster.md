@@ -134,6 +134,23 @@ flowchart LR
 
 ## Looking at the cluster
 
+### How kubectl knows where the cluster is
+
+kubectl is only a client. It does not contain a cluster and does not run one; every command it is given becomes a request to the **API server**, the control plane's front desk. So before it can do anything, kubectl needs an answer to one question: where is the API server?
+
+The answer is in a file on the machine where kubectl runs, the **kubeconfig**, which by default lives at `~/.kube/config`. It holds the API server's address and the credentials kubectl presents to it. Nobody wrote this one by hand: the last line of `minikube start` above, `kubectl is now configured to use "minikube" cluster`, was Minikube writing it. A kubeconfig can list several clusters, each under a name called a **context**, and kubectl talks to whichever context is current:
+
+```bash
+kubectl config get-contexts
+```
+
+```text
+CURRENT   NAME       CLUSTER    AUTHINFO   NAMESPACE
+*         minikube   minikube   minikube   default
+```
+
+One context, `minikube`, and the `*` marks it as current. To see the address it points at, ask the cluster itself:
+
 ```bash
 kubectl cluster-info
 ```
@@ -143,22 +160,43 @@ Kubernetes control plane is running at https://192.168.49.2:8443
 CoreDNS is running at https://192.168.49.2:8443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 ```
 
-Every node has an IP address, and `192.168.49.2` is this one's. Because the only node is also the control plane, the control plane's address is the node's address, and port `8443` is where its API server listens. **CoreDNS** is the cluster's internal name service: it lets workloads find each other by name instead of by address, which matters a great deal when Services arrive later in this folder. It is reached through the same address, because the API server is the gateway to everything.
+Every node has an IP address, and `192.168.49.2` is the Minikube node's. Because the only node is also the control plane, the control plane's address is the node's address, and port `8443` is where its API server listens.
 
-Every kubectl command follows the same path: the command goes to the API server, and the API server works out what to do with it and answers.
+> **CoreDNS** is the cluster's internal name service: it lets workloads find each other by name instead of by address, which matters a great deal when Services arrive later in this folder. It is reached through the same address, because the API server is the gateway to everything.
+
+### Every command takes the same path
+
+Notice that even on one computer, kubectl and the API server are in different places. kubectl runs on the machine you typed into. The API server runs inside the Minikube node, the container Docker created, which has an address of its own. So every command crosses a small network hop:
 
 ```mermaid
-flowchart LR
-    K["kubectl command"] -->|"HTTPS request"| API["API server<br/>192.168.49.2:8443"]
-    API -->|"reads or changes"| C["The cluster's state"]
+flowchart TD
+    subgraph YOU["The machine you type on"]
+        CFG["~/.kube/config<br/>server: 192.168.49.2:8443"] -->|"tells it where to send"| K["kubectl"]
+    end
+    K -->|"HTTPS request"| API
     API -->|"answer"| K
+    subgraph NODE["Minikube node · 192.168.49.2"]
+        API["API server<br/>port 8443"] -->|"reads or changes"| C["The cluster's state"]
+    end
     classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
     classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
     classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
     class K actor
+    class CFG inert
     class API mech
     class C good
 ```
+
+**Every kubectl command follows this path:** kubectl reads the address from the kubeconfig, sends the command to the API server there, and the API server works out what to do with it and answers. kubectl never touches a node, a pod or a container directly.
+
+The path stays the same wherever the cluster lives; only the address in the kubeconfig changes.
+
+| Cluster | Where the API server runs | What the kubeconfig points at |
+|---|---|---|
+| Minikube, this note | a container on the same computer | `192.168.49.2:8443` |
+| Your own servers | the control-plane machine | that machine's address |
+| A cloud provider's managed Kubernetes | machines the provider runs for you | an address the provider gives you |
 
 How many nodes does the cluster have?
 
@@ -206,7 +244,9 @@ kube-scheduler-minikube            1/1     Running   0          29s
 storage-provisioner                1/1     Running   0          28s
 ```
 
-`-n kube-system` picks the **namespace** to look in. A namespace is a named partition of one cluster, so that different sets of objects can be kept apart; `kube-system` is the one Kubernetes keeps its own components in. Ordinary work goes into the namespace called `default`, which is where kubectl looks when no namespace is given.
+`-n kube-system` picks the **namespace** to look in. **A namespace is a named partition of one cluster, so that different sets of objects can be kept apart** 
+
+> `kube-system` is the one Kubernetes keeps its own components in. Ordinary work goes into the namespace called `default`, which is where kubectl looks when no namespace is given.
 
 The list is the architecture note made real: the **API server**, **etcd**, the **scheduler** and the **controller manager** of the control plane, plus **kube-proxy** and **CoreDNS**. On this kind of cluster, those components themselves run as pods. `kindnet` is the networking plugin Minikube installs to connect pods to each other, and `storage-provisioner` creates disks when something asks for one; the StatefulSet note relies on it.
 
@@ -376,14 +416,3 @@ So the job is no longer create this pod. It is a requirement, and requirements c
 | Run three database pods and keep each one's identity and disk | **StatefulSet** |
 
 These are called **workload controllers**, or workload resources: you write down which one you want and what it should maintain, and the matching controller inside the controller manager does the managing. Which one to use depends on the application, and the next two notes take them one at a time, starting from the problem each one solves. Before any of them can work, though, there is a question none of them can avoid: of all the pods in a cluster, how does a controller know which ones are its own? That is where the next note begins.
-
-> [!info] **Versions, checked 2026-11-16.**
-> Minikube v1.39.0, which creates Kubernetes v1.37.0 by default, on containerd 2.3.4. **The snap command above installs kubectl 1.35.10**, because snap's default channel lagged two releases behind. kubectl is supported within one minor version of the cluster, and every command against the 1.37 cluster printed:
-> ```text
-> Warning: version difference between client (1.35) and server (1.37) exceeds the supported minor version skew of +/-1
-> ```
-> Snap had no 1.37 channel at the time of writing, and moving to the 1.36 channel removed the warning:
-> ```bash
-> sudo snap refresh kubectl --channel=1.36/stable
-> ```
-> Expect the version numbers here to drift; the check is `kubectl version`, which prints the client and the server side by side.

@@ -27,7 +27,7 @@ flowchart LR
 
 This is a **forward proxy**, also called a front proxy. The client cannot reach the internet without passing through it.
 
-![[Devops/04-Networking/Images/forward-proxy.png]]
+![[04-Networking/Images/forward-proxy.png]]
 
 The dashed boundary is the part to hold on to. The proxy is drawn **inside** the **client's own networ**k, and the site being visited is out in the internet beyond it. Everything the user sends leaves that boundary through the proxy and nowhere else.
 
@@ -74,7 +74,7 @@ flowchart LR
 
 The belief structure is the mirror image. The client thinks it is talking to the real server; it is talking to the server's proxy. The server sends its responses to the proxy, and the proxy is responsible for talking to the client.
 
-![[Devops/04-Networking/Images/reverse-proxy.png]]
+![[04-Networking/Images/reverse-proxy.png]]
 
 Compare that with the forward proxy picture above and the only thing that moved is the dashed boundary. There it enclosed the user and their proxy; here it encloses the proxy and the web server. Notice in particular where the domain name is written in each: in the forward proxy picture it names the far-off site the user is trying to reach, and here it names the boundary itself — the proxy and the server together are what the world calls `bookcart.in`.
 

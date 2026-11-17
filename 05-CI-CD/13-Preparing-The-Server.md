@@ -4,11 +4,11 @@ The previous note ended with Jenkins running on a server and knowing nothing abo
 
 Everything in this note is configured from **Manage Jenkins**, the gear icon at the top right of every page. It opens onto Jenkins's whole administration area, and three of its entries under **System Configuration** are the ones used here: **Nodes**, **Plugins** and **Tools**.
 
-![[Devops/05-CI-CD/Images/manage-jenkins.png]]
+![[05-CI-CD/Images/manage-jenkins.png]]
 
 The first thing worth looking at is the list of nodes. With a single server there is one entry, the built-in node — the controller, doing agent work as well, as the previous note described.
 
-![[Devops/05-CI-CD/Images/nodes.png]]
+![[05-CI-CD/Images/nodes.png]]
 
 Each column is a health check Jenkins runs on the node every few minutes. **Architecture** reads `aarch64` because the laptop underneath is an Apple Silicon Mac, and a virtual machine has the same processor family as the machine it runs on. **Free Disk Space** is the room left for workspaces and build output. The two coloured cells are not faults on a practice machine:
 
@@ -17,7 +17,7 @@ Each column is a health check Jenkins runs on the node every few minutes. **Arch
 
 The node's own settings open from the gear at the end of its row, and they show **two executors**. An executor, from earlier in this folder, is one slot on a node that can be given a job, so two executors means this server will run **two jobs at the same time**, and a third one waits in a queue until a slot frees. That number is configurable, and on a server with more capacity it can be raised.
 
-![[Devops/05-CI-CD/Images/node-configure.png]]
+![[05-CI-CD/Images/node-configure.png]]
 
 **Number of executors** is the setting itself, and changing it and saving is all it takes to raise or lower it. The **Build Executor Status** box on the left reads `0/2` — none of the two slots busy right now — and it is the quickest place to glance at while a build is running to see a slot taken.
 
@@ -37,7 +37,7 @@ If one of these is missing, it is installed from **Manage Jenkins → Plugins**,
 
 The application built in this folder is Java, built with Maven. Jenkins itself does not know what Maven or a JDK is until it is told, and the place it is told is **Manage Jenkins → Tools**.
 
-![[Devops/05-CI-CD/Images/tools.png]]
+![[05-CI-CD/Images/tools.png]]
 
 There you add a **JDK installation** and a **Maven installation**, and give each one a name. The name is the important part. A pipeline does not say which version of Java to use by describing it; it refers to one of these configured installations by the name it was given, and Jenkins supplies that tool to the build.
 
@@ -77,7 +77,7 @@ It installs into `/usr/lib/jvm/java-21-openjdk-arm64` — the `arm64` because th
 3. **Untick Install automatically.** The JDK is already on disk; Jenkins only needs to be told where.
 4. **JAVA_HOME:** `/usr/lib/jvm/java-21-openjdk-arm64`.
 
-![[Devops/05-CI-CD/Images/tools-jdk.png]]
+![[05-CI-CD/Images/tools-jdk.png]]
 
 Maven is the opposite case. It is not on the server, and it does not need to be — Jenkins can fetch it:
 
@@ -86,7 +86,7 @@ Maven is the opposite case. It is not on the server, and it does not need to be 
 3. **Leave Install automatically ticked**, with **Install from Apache** chosen.
 4. **Version:** the newest 3.9 release in the list — 3.9.16 here.
 
-![[Devops/05-CI-CD/Images/tools-maven.png]]
+![[05-CI-CD/Images/tools-maven.png]]
 
 **Saving this does not download Maven.** It only records an instruction for later: when a build asks for `Maven 3.9`, fetch 3.9.16 from the Apache project. Until then, there is no Maven on the server at all. The download happens inside the first build that needs it:
 

@@ -14,7 +14,7 @@ Network communication is described as a stack of layers, each responsible for on
 | 2 | Data link | Moving frames between directly connected devices |
 | 1 | Physical | The actual signal on the wire or the air |
 
-![[Devops/04-Networking/Images/osi-seven-layer-model.png]]
+![[04-Networking/Images/osi-seven-layer-model.png]]
 
 The picture adds one column the table does not: the name given to a chunk of data at each level. The same content is called **data** in the top three layers, **segments** once the transport layer has divided it up, **packets** once the network layer has attached addresses, **frames** at the data link layer, and finally **bits** on the wire. It is one body of content being wrapped and renamed on the way down, and unwrapped on the way back up. The split down the side is a common grouping rather than part of the standard: the upper four are the concern of the machines at each end, and the lower three are the concern of whatever carries the traffic between them.
 

@@ -1,9 +1,3 @@
-The previous note made the case for Kubernetes: a fleet of servers needs something that keeps a desired state true, places containers, replaces them when they crash and rolls out new versions. This note opens the box and names the parts that do each of those jobs.
-
-Start without Kubernetes at all. One server runs three containers, because the bookshop is built as three small services (`user-service`, `payment-service` and `order-service`), each in its own container. Managing three containers on one machine by hand is no trouble, and no Kubernetes is needed. Most companies' architecture stops about here, and that is fine.
-
-The trouble starts when one server becomes a hundred, with three containers on each: some of them replicas, some new services, some databases, some Redis. Every problem from the previous note now has to be decided, constantly: which container should run on which server, what to do when a server is full, what to do when a server crashes, what to do when a container goes down. That calls for something central that makes decisions — and it is cleaner if the machines that make the decisions are not the same machines that run the containers.
-
 ## The cluster, split in two
 
 A **Kubernetes cluster** is the set of machines Kubernetes manages. Each of them is a **node**, the previous note's word for any machine taking part. Kubernetes divides the nodes into two roles.
@@ -26,7 +20,7 @@ flowchart TD
 
 The **control plane** makes the decisions: which container goes to which server, what happens if a server goes down — every rule from the five problems. It is the **brain** of the cluster, because the thinking happens there. It does not run your application.
 
-The **worker nodes** are the machines your application actually runs on. They run the **workloads**, the general word for whatever Kubernetes runs on your behalf. In these first notes a workload is always your application: its containers, with as many replicas as the description asks for.
+The **worker nodes** are the machines your application actually runs on. They run the **workloads**(general word for whatever Kubernetes runs on your behalf). In these first notes a workload is always your application: its containers, with as many replicas as the description asks for.
 
 > [!important] **Worker nodes run the workloads; they are not where the cluster's data lives.**
 > It is easy to say the workers store the containers or store the data, and it is wrong. What a worker does is **run** containers. The cluster's own record of what should exist is kept by the control plane, as the etcd section below explains, and your application's data lives in your application's database, wherever that runs.
@@ -46,15 +40,25 @@ The whole hierarchy, which comes back over and over, is:
 
 The **pod** is a level between the node and the container, and the third note is about why it exists. Until then, this note talks about placing and running containers. That is a simplification, but every component below does exactly the job described for it either way.
 
-Kubernetes' own documentation draws the cluster like this, and every component in it is introduced below in the order a request meets them:
-
-![[Devops/08-Kubernetes/Images/components-of-kubernetes.png]]
+The components below are introduced in the order a request meets them, and a map of the cluster grows by one component per section. In each version **the component that section introduces is blue**, the ones from earlier sections are grey, and you stay dark grey, as does kubectl once its own section is behind you.
 
 ## Talking to the cluster: kubectl
 
 Suppose the order service has already been packaged as an image, `bookcart/order-service:v1`. With Docker you would type `docker run` and get a container. Now you want Kubernetes to run it and manage it, so you need a way to give Kubernetes instructions, and that means a command-line tool.
 
 The tool is **kubectl**, the Kubernetes command-line tool. Its name gets pronounced several ways (kube-c-t-l, kube-control, kube-cuttle) and they all mean the same program. It is installed on your laptop or another management machine, and it is the thing you talk to. On its own it is only a client with nothing to talk to; getting a whole cluster running on your own machine for it is where the local-cluster note starts.
+
+```mermaid
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| CL["The cluster<br/>not opened up yet"]
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class KC mech
+    class YOU actor
+    class CL inert
+```
 
 A command looks like this, and the syntax is not the point yet:
 
@@ -71,7 +75,7 @@ devops   Ready    control-plane   3m42s   v1.37.2+k3s1
 
 ## The API server: the front desk
 
-kubectl is only an interface. It is the same relationship as a terminal and a shell: the terminal is the window you type into, and the shell behind it does the work. Behind kubectl, the thing that receives your request is the **API server**, properly named **kube-apiserver**.
+**kubectl is only an interface.** It is the same relationship as a terminal and a shell: the terminal is the window you type into, and the shell behind it does the work. Behind kubectl, the thing that receives your request is the **API server**, properly named **kube-apiserver**.
 
 Think of it as the gateway or front desk of the control plane. Everything you ask for arrives here first. It is called an API server because that is what it is: it exposes an **API**, a defined set of requests a program will accept, and like any API it serves requests to **create**, **read**, **update** and **delete** things. What it creates, reads, updates and deletes are **descriptions**, the desired state from the previous note:
 
@@ -84,8 +88,21 @@ Think of it as the gateway or front desk of the control plane. Everything you as
 
 So `kubectl get nodes` really means: API server, give me information about the nodes. The API server looks it up and returns it.
 
+```mermaid
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| API["API server<br/>receives and records"]
+    subgraph CPL["Control plane"]
+        API
+    end
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    class API mech
+    class YOU,KC actor
+```
+
 > [!important] **The front desk records decisions; it does not make them, and it does not start containers.**
-> The API server is sometimes described as the part that takes the decisions, or the part that creates containers and servers to scale. It is neither. It checks a request, records it, and answers. Deciding where things run, noticing that the actual state has drifted, and starting containers are each done by a different component, below — and each of them learns what to do by asking the API server what has been recorded. That is why everything goes through it: **kubectl → API server** for you, and the same arrow for every other component, as the diagram above shows.
+> The API server is sometimes described as the part that takes the decisions, or the part that creates containers and servers to scale. It is neither. It checks a request, records it, and answers. Deciding where things run, noticing that the actual state has drifted, and starting containers are each done by a different component, below — and each of them learns what to do by asking the API server what has been recorded. That is why everything goes through it: **kubectl → API server** for you, and a line to the API server for every other component, as the map shows once it fills in.
 
 ## etcd: the cluster's memory
 
@@ -101,6 +118,23 @@ That store is **etcd**, a **distributed key-value store**. A key-value store kee
 | replicas | 3 |
 
 The real format is more involved than this, but the shape (a key and the state stored under it) is the point.
+
+```mermaid
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| API["API server<br/>receives and records"]
+    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
+    subgraph CPL["Control plane"]
+        API
+        ETCD
+    end
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class ETCD mech
+    class YOU,KC actor
+    class API inert
+```
 
 > [!warning] **etcd is not your application's database.**
 > It is Kubernetes' own store, for the cluster's state. Your Spring Boot application keeps its customers and orders in MySQL, exactly as before; it does not put anything in etcd, and you will not access etcd yourself. Kubernetes uses it in the background, and it is the API server that reads from it and writes to it when a request needs data stored or fetched.
@@ -122,6 +156,25 @@ The new container needs **2 CPU cores and 3 GB of RAM**. Worker 1 cannot take it
 
 Someone has to make that choice, and that component is the **kube-scheduler**. Its job, in one line: **find an appropriate node for a newly created workload.** It watches the API server for workloads that do not have a node yet, decides which worker each one goes to based on how much CPU and memory each node has free, and reports the choice back to the API server, which records it.
 
+```mermaid
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| API["API server<br/>receives and records"]
+    SCH["Scheduler<br/>decides placement"] -->|"watches, binds"| API
+    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
+    subgraph CPL["Control plane"]
+        SCH
+        API
+        ETCD
+    end
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class SCH mech
+    class YOU,KC actor
+    class API,ETCD inert
+```
+
 > [!important] **The scheduler only decides where. It does not start anything.**
 > It produces a placement (this workload should run on worker 2) and stops there. Running it is somebody else's job, on the node itself. **Checked against the documentation:** reporting the decision back to the API server is a step called **binding**, and the node's agent runs the workload from there.
 
@@ -141,6 +194,29 @@ The scheduler has chosen worker 2. But worker 2 is just a server: a machine does
 
 That something is the **kubelet**: the Kubernetes agent, and there is one on **every** worker node. It watches the API server for workloads assigned to its own node, and its responsibility is simple: **make sure the workloads assigned to its node are actually running on that node.**
 
+```mermaid
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| API["API server<br/>receives and records"]
+    SCH["Scheduler<br/>decides placement"] -->|"watches, binds"| API
+    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
+    subgraph CPL["Control plane"]
+        SCH
+        API
+        ETCD
+    end
+    API <-->|"kubelet watches for work,<br/>reports status"| KL["kubelet"]
+    subgraph WK["Worker node"]
+        KL
+    end
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class KL mech
+    class YOU,KC actor
+    class API,ETCD,SCH inert
+```
+
 > [!question] **Is the kubelet the worker?**
 > No. The kubelet is an agent; the worker is the node, the server itself. The kubelet is the part of Kubernetes that lives on the worker and acts for it.
 
@@ -151,27 +227,33 @@ Can the kubelet create a Linux container itself? **No.** It needs a **container 
 The relationship is the one from the first note: you type `docker run`, and Docker's machinery actually builds the container. The kubelet is in your position (it is the agent that knows what should run and gives the instruction), and the runtime is the part that does it. The common runtimes are **containerd** and **CRI-O**.
 
 ```mermaid
-flowchart LR
-    S["Scheduler<br/>chooses worker 2"] -->|"recorded by<br/>the API server"| K["kubelet on worker 2<br/>knows what should run"]
-    K -->|"instructs"| R["Container runtime<br/>containerd · CRI-O"]
-    R -->|"creates"| C["Container"]
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| API["API server<br/>receives and records"]
+    SCH["Scheduler<br/>decides placement"] -->|"watches, binds"| API
+    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
+    subgraph CPL["Control plane"]
+        SCH
+        API
+        ETCD
+    end
+    API <-->|"kubelet watches for work,<br/>reports status"| KL["kubelet"]
+    KL -->|"instructs"| RT["Container runtime"]
+    RT -->|"creates"| APP["Your application"]
+    subgraph WK["Worker node"]
+        KL
+        RT
+        APP
+    end
     classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
     classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
-    classDef step fill:#7a5a1f,stroke:#b08a2e,stroke-width:1.5px,color:#fff
-    class S step
-    class K,R mech
-    class C good
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class RT mech
+    class APP good
+    class YOU,KC actor
+    class API,ETCD,SCH,KL inert
 ```
-
-> [!info] **This chain was visible in a run.** When a replacement container was started on the one-node cluster, its event log showed the hand-off directly: first `Successfully assigned ... to devops` from the scheduler, then `Pulled`, `Created` and `Started`, all reported by `kubelet`. The node itself reported its runtime as `containerd://2.3.7`.
-
-> [!question] **Then does the kubelet have access to the whole server? Isn't that a security problem?**
-> A common answer is that the kubelet does not have access to the whole server, because it does not create the containers itself; the container runtime does.
->
-> **The second half is right; the first half is not, and it matters.** The kubelet does delegate container creation to the runtime, as above. But it runs with root privileges on its node. On the cluster used to check these notes, the process hosting it runs as `root`, and so does containerd. It has to: starting and supervising containers, mounting their storage and wiring their networking all need it. That is precisely why a node's kubelet is treated as a sensitive component and locked down, rather than assumed harmless.
-
-> [!note] **Going further: Docker Engine is no longer one of the runtimes.**
-> Kubernetes used to be able to drive Docker Engine through a compatibility layer called dockershim. **Kubernetes v1.24 removed it.** Images built with Docker still run unchanged (an image is a standard format), but on the node, a runtime such as containerd runs them, not Docker.
 
 ## The controller manager: the supervisor
 
@@ -192,14 +274,75 @@ flowchart TD
 
 That loop is reconciliation, from the first note, and this is the component that does it. **Checked against the documentation:** controllers are control loops that watch the cluster's state and move the current state toward the desired one, and Kubernetes' built-in controllers run inside the kube-controller-manager.
 
-> [!info] **Which controller replaced the deleted container.**
-> In the deletion test from the first note, the event log named the component that reacted: `replicaset-controller   Created pod`. The description of the order service (image, memory, port, three replicas) is stored as a **Deployment**: the Kubernetes object that describes an application and how many replicas of it should run. The Deployment, in turn, keeps a **ReplicaSet**, a smaller object whose only job is to hold the number: keep exactly this many identical copies running. Each controller supervises one kind of object, and the ReplicaSet's controller is the one that tops the count back up. On the check cluster the chain was visible directly: the ReplicaSet listed the Deployment as its owner, and every pod listed the ReplicaSet as its owner.
+```mermaid
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| API["API server<br/>receives and records"]
+    SCH["Scheduler<br/>decides placement"] -->|"watches, binds"| API
+    CM["Controller manager<br/>keeps desired = actual"] -->|"watches, corrects"| API
+    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
+    subgraph CPL["Control plane"]
+        SCH
+        CM
+        API
+        ETCD
+    end
+    API <-->|"kubelet watches for work,<br/>reports status"| KL["kubelet"]
+    KL -->|"instructs"| RT["Container runtime"]
+    RT -->|"creates"| APP["Your application"]
+    subgraph WK["Worker node"]
+        KL
+        RT
+        APP
+    end
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class CM mech
+    class APP good
+    class YOU,KC actor
+    class API,ETCD,SCH,KL,RT inert
+```
 
 ## kube-proxy: networking between services
 
 A worker node holds one more component. Applications in a cluster have to talk: the front end talks to the back end, and a client (Postman, or another application) talks to the application. Each of those is a network call, and behind it sits networking configuration: which network, which address, which port number, how the message gets to the right container.
 
 Kubernetes has an abstraction for exactly this, called a **Service**: one stable name and address that stands in front of a set of replicas, so that callers do not need to know which containers exist right now or where they run. Services are a subject of their own, with a note of their own later in this folder. The component on each node that helps make them work is **kube-proxy**. For now: **it maintains the networking rules on the node that send traffic for a Service to the right containers**, so that a container is not an island and one service can reach another.
+
+```mermaid
+flowchart TD
+    YOU["You"] --> KC["kubectl"]
+    KC -->|"requests"| API["API server<br/>receives and records"]
+    SCH["Scheduler<br/>decides placement"] -->|"watches, binds"| API
+    CM["Controller manager<br/>keeps desired = actual"] -->|"watches, corrects"| API
+    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
+    subgraph CPL["Control plane"]
+        SCH
+        CM
+        API
+        ETCD
+    end
+    API -->|"Services, watched<br/>by kube-proxy"| KP["kube-proxy"]
+    API <-->|"kubelet watches for work,<br/>reports status"| KL["kubelet"]
+    KL -->|"instructs"| RT["Container runtime"]
+    RT -->|"creates"| APP["Your application"]
+    subgraph WK["Worker node"]
+        KL
+        KP
+        RT
+        APP
+    end
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class KP mech
+    class APP good
+    class YOU,KC actor
+    class API,ETCD,SCH,KL,RT,CM inert
+```
 
 > [!question] **Are ingress and egress part of kube-proxy?**
 > **Ingress** is traffic coming into the cluster from outside it; **egress** is traffic leaving it for somewhere outside. The answer is yes and no: kube-proxy is involved in moving traffic, but the full path in and out of a cluster involves more than kube-proxy, and the Services note comes back to it.
@@ -212,22 +355,25 @@ Kubernetes has an abstraction for exactly this, called a **Service**: one stable
 flowchart TD
     YOU["You"] --> KC["kubectl"]
     KC -->|"requests"| API["API server<br/>receives and records"]
-    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
     SCH["Scheduler<br/>decides placement"] -->|"watches, binds"| API
     CM["Controller manager<br/>keeps desired = actual"] -->|"watches, corrects"| API
+    API -->|"reads and writes"| ETCD["etcd<br/>remembers state"]
     subgraph CPL["Control plane"]
-        API
-        ETCD
         SCH
         CM
+        API
+        ETCD
     end
+    API -->|"Services, watched<br/>by kube-proxy"| KP["kube-proxy"]
+    API <-->|"kubelet watches for work,<br/>reports status"| KL["kubelet"]
+    KL -->|"instructs"| RT["Container runtime"]
+    RT -->|"creates"| APP["Your application"]
     subgraph WK["Worker node"]
-        KL["kubelet"] -->|"instructs"| RT["Container runtime"]
-        RT -->|"creates"| APP["Your application"]
-        KP["kube-proxy"]
+        KL
+        KP
+        RT
+        APP
     end
-    KL -->|"watches for its work,<br/>reports status"| API
-    KP -->|"watches Services"| API
     classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
     classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
     classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
@@ -238,46 +384,51 @@ flowchart TD
     class APP good
 ```
 
+Kubernetes' own documentation draws the same cluster like this:
+
+![[08-Kubernetes/Images/components-of-kubernetes.png]]
+
+Every hexagon in it is a component from this note except one: **c-c-m**, the **cloud controller manager**, which the documentation marks as optional. Its job is to integrate the cluster with the underlying cloud provider, which is why it is drawn with the only arrow leading out of the cluster, to the cloud provider's API. kubectl and the container runtime are not drawn.
+
 Trace one request through it (three replicas of order-service, image v2, 1 GB, port 8080):
 
 ```mermaid
+---
+config:
+  sequence:
+    mirrorActors: false
+---
 sequenceDiagram
-    participant You
-    participant kubectl
-    participant API as API server
-    participant etcd
-    participant CM as Controller manager
-    participant Sched as Scheduler
-    participant KL as kubelet (worker)
-    participant RT as Container runtime
-    You->>kubectl: describe what you want
-    kubectl->>API: create this description
-    API->>etcd: store the desired state
-    CM->>API: 0 running, 3 wanted: create 3
-    Sched->>API: each one goes on this worker
-    KL->>API: anything assigned to me?
-    API-->>KL: these workloads are yours
-    KL->>RT: create the container
+    autonumber
+    participant You as You<br/>(kubectl)
+    box rgba(47,110,166,0.45) Control plane
+        participant API as API<br/>server
+        participant etcd
+        participant CM as Controller<br/>manager
+        participant Sched as Scheduler
+    end
+    box rgba(176,138,46,0.45) Worker node
+        participant KL as kubelet
+        participant RT as Container<br/>runtime
+    end
+    You->>API: want 3 replicas
+    API->>etcd: store it
+    CM->>API: 0 of 3 running: create 3
+    Sched->>API: put each on a worker
+    KL->>API: anything for me?
+    API-->>KL: these 3
+    KL->>RT: start them
     RT-->>KL: running
-    Note over CM: keeps checking: if one dies,<br/>actual falls to 2 and it creates another
+    Note over API,Sched: The controller manager keeps checking.<br/>If one dies, 2 of 3 are running and it creates another.
 ```
 
-| Component | Where | Its job |
-|---|---|---|
-| kubectl | your machine | the command-line tool you talk to Kubernetes with |
-| API server | control plane | receives and records every request; the gateway into Kubernetes |
-| etcd | control plane | persistent memory of the cluster's state |
-| Scheduler | control plane | chooses the node a new workload runs on |
-| Controller manager | control plane | keeps the actual state equal to the desired state |
-| kubelet | every worker node | the agent that makes sure its node's workloads run |
-| Container runtime | every worker node | actually creates and runs the containers |
-| kube-proxy | every worker node | maintains the networking rules behind Services |
-
-> [!tip] **A one-node cluster is both halves at once.**
-> The cluster used to check these notes has a single node, labelled `control-plane`, and every test container also ran on it. The split above is about roles, not a rule that they need separate machines; in production they are separated, for the reason this note opened with.
-
-> [!question] **With containers on different machines, what manages security?**
-> Security is not one thing handled in one place; different levels handle different parts. In front of the servers sit an **API gateway** — the single entry point that every outside request passes through, which can check who is calling before anything reaches a service — and a **load balancer**, which spreads incoming requests across the replicas. Those take care of a good share of it. Inside the application, the code handles more (checking a **JWT**, a signed token a caller presents to prove who they are, on each request), and secrets such as passwords and keys are kept out of the code and out of anything stored with it. Asking who manages security only has an answer once you say which security you mean.
-
-> [!info] **Versions, checked 2026-11-15.**
-> The newest Kubernetes minor release is **1.37**, and the project maintains the three most recent: 1.37, 1.36 and 1.35. The cluster these notes were checked on ran v1.37.2. **kubectl is supported only within one minor version of the cluster**: a 1.34 kubectl talking to that 1.37 cluster worked, but printed `version difference between client (1.34) and server (1.37) exceeds the supported minor version skew of +/-1`. Component names and roles here have been stable for years; release numbers, and which optional components a distribution ships, are what drift.
+| Component          | Where             | Its job                                                         |
+| ------------------ | ----------------- | --------------------------------------------------------------- |
+| kubectl            | your machine      | the command-line tool you talk to Kubernetes with               |
+| API server         | control plane     | receives and records every request; the gateway into Kubernetes |
+| etcd               | control plane     | persistent memory of the cluster's state                        |
+| Scheduler          | control plane     | chooses the node a new workload runs on                         |
+| Controller manager | control plane     | keeps the actual state equal to the desired state               |
+| kubelet            | every worker node | the agent that makes sure its node's workloads run              |
+| Container runtime  | every worker node | actually creates and runs the containers                        |
+| kube-proxy         | every worker node | maintains the networking rules behind Services                  |

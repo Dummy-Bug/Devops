@@ -12,7 +12,7 @@ That sounds impossible until you see it done with colours.
 
 Take a colour that everybody knows, including any attacker. Call it the public colour: **yellow**.
 
-![[Devops/04-Networking/Images/diffie-hellman-paint-analogy.png]]
+![[04-Networking/Images/diffie-hellman-paint-analogy.png]]
 
 That is the whole exchange in one picture, and the paragraphs below walk through it. Two conventions in it are worth naming first. The two parties are labelled **Alice** and **Bob** — in writing about cryptography the participants are almost always given those names rather than being called sender and receiver, and here they are simply the client and the server. And the crossing arrows in the middle are labelled **public transport**, meaning only that those two mixtures travel over the open network where anyone may see them.
 
