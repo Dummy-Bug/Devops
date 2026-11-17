@@ -1,4 +1,4 @@
-The previous note ended on the question that decides whether a Deployment fits: are the pods interchangeable? For most applications the answer is yes, and this note starts by showing why. Then it takes the two cases where the answer is no, and the two controllers built for them: the **DaemonSet**, for something that must run on every node, and the **StatefulSet**, for databases.
+
 
 ## Why most applications don't care which pod they get
 
@@ -137,6 +137,8 @@ It is used far less than a Deployment, but when you need one copy everywhere, no
 > [!question] **If the log agent depends on the application, can the application and its helper be deployed together the first time?**
 > You never place either of them yourself. You write YAML that says what should exist (three replicas of the main application, and one log agent on every node), and the controllers do the placing. What you control is the description: how many, and which kind of controller.
 
+--- 
+
 ## The database: the StatefulSet
 
 Now the database itself: MySQL, PostgreSQL, Kafka, ZooKeeper, Redis, Cassandra and their kind. Take MySQL, and suppose you want three replicas of it.
@@ -243,16 +245,6 @@ spec:
 ```
 
 The `---` separates two objects in one file. The container is again a stand-in that only sleeps, so the test is about the StatefulSet and its disks rather than about MySQL; a real database would use its own image and its own configuration.
-
-> [!info] **This was run, not just read.**
-> Applied on a Minikube cluster, the pods came up in order (`db-0` alone first, then `db-1` and `db-2`), and each got its own claim, named after the template and the pod:
-> ```text
-> NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS
-> data-db-0   Bound    pvc-285967bf-b529-4ca2-93ad-34dda4417372   100Mi      RWO            standard
-> data-db-1   Bound    pvc-c99528a9-114c-4a11-826e-a4f9a1d3d448   100Mi      RWO            standard
-> data-db-2   Bound    pvc-ea4875bf-fdd3-4c8d-b17e-519c61c2ebd6   100Mi      RWO            standard
-> ```
-> A row, `order-42`, was written to `/data/row.txt` inside `db-1`. Then `db-1` was deleted. It came back as a genuinely new pod — a different unique ID, and a new IP address, `10.244.0.27` becoming `10.244.0.29` — **but with the same name, the same claim `data-db-1`, and `order-42` still on its disk.** `db-0`'s `/data` was empty: each replica really does have its own disk, not a shared one.
 
 > [!tip] **Going further: ordered startup, and a stable network name.**
 > Some stateful systems care about order: `db-0` must be ready before `db-1` starts, and `db-1` before `db-2`. **Checked against the documentation:** a StatefulSet by default creates pods one at a time in ordinal order, waiting for each to be running and ready, and removes them in reverse (the order the run showed). And through that Service with no cluster address, each pod gets a DNS name of its own that survives recreation: on the check cluster, `db-1.db.default.svc.cluster.local` resolved to the new `db-1`'s address after it came back.
