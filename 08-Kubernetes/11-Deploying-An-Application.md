@@ -1,4 +1,3 @@
-Every note so far took one piece of Kubernetes on its own: Deployments and ReplicaSets, Services, ConfigMaps and Secrets, requests, limits and QoS classes. This note puts them together and deploys a real application with a database, step by step, by hand — far more configuration than a production setup would type out, which is exactly why it is worth doing once.
 
 ## What is being deployed
 
@@ -24,7 +23,6 @@ spring.jpa.hibernate.ddl-auto=update
 server.port=8080
 ```
 
-**JDBC** is Java's standard interface for connecting to databases, and a JDBC URL such as `jdbc:mysql://localhost:3306/notesdb` tells the MySQL driver which server, port and database to use. `${DB_URL:...}` means: use the environment variable `DB_URL` if it is set, otherwise the value after the colon. That is what lets Kubernetes supply the real values from outside, as the ConfigMaps note described. `ddl-auto=update` tells Hibernate, the library Spring uses to talk to the database, to create any missing tables **when the application starts** — a detail that matters later.
 
 With plain Docker, deploying this means two containers, the Spring Boot one and the MySQL one, on a server, with a network between them. With Kubernetes, the pieces are:
 
@@ -478,22 +476,6 @@ Each request went in through the NodePort Service to one of the API pods, and th
 > [!bug] **Ready is not the same as serving.**
 > The rollout reported both API pods available after 2 seconds — and the first request, sent straight away, was refused outright (`curl` exit code 7, connection refused). Spring Boot took about another 9 seconds before it answered. The API pods have **no readiness probe**, so Kubernetes counted them ready the moment their containers started, while the application inside was still booting. MySQL did not have this problem, because its probe held it at `0/1` until its port was open. A readiness probe on the application (an HTTP check against one of its endpoints) would close the gap.
 
-### Which pod answered?
-
-```bash
-for i in {1..10}; do
-  curl -s "http://$MINIKUBE_IP:30080/whoami"
-  echo
-done
-```
-
-```text
-      9 Handled by: notes-app-6dcd96f98c-kt27g
-      1 Handled by: notes-app-6dcd96f98c-r9mqs
-```
-
-Counted, ten calls went nine to one pod and one to the other. The Service routes each request to an eligible pod; it does not promise to alternate. The client only ever needed the one address.
-
 ## Step 9: scale
 
 ```bash
@@ -656,21 +638,3 @@ The whole sequence, from a project on a laptop to a running, scaled, self-healin
 
 Underneath every step is the idea the whole folder rests on: **you declare the desired state, and Kubernetes keeps working to make the actual state match it.**
 
-> [!question] **The Dockerfile can set the JVM's memory, and the Deployment sets a memory limit. Which one wins?**
-> They are different things. A Dockerfile cannot set a container's memory limit at all; at most, the `java` command in it can pass JVM options such as a maximum heap size. **The limit in the Deployment is the hard boundary**, enforced by the kernel for the whole container. Inside it, Java sizes itself to that boundary. Checked on one of the API pods, which has a 512Mi limit:
-> ```text
-> 536870912                                  (the container's memory limit, in bytes)
-> MaxHeapSize = 134217728                    (128 MiB)
-> MaxRAMPercentage = 25.000000
-> UseContainerSupport = true
-> ```
-> Java 21 detected the container's limit and set its maximum heap to 25% of it. A heap size set by hand higher than the limit allows does not raise the limit; the container would simply be OOMKilled when it crossed it, as the requests-and-limits note showed.
-
-> [!question] **Two Burstable pods on an 8 GB node: pod 1 requests 4 GB with a limit of 6, pod 2 requests 2 GB with a limit of 3. Pod 1 climbs to 6 GB while pod 2 sits at 2.5. Is it fair if pod 2 is the one evicted?**
-> By the ranking the QoS note described, it should not be pod 2. Both are Burstable, and both use more than they requested, so the next factor decides: how far each one's usage exceeds its request. **Going further, worked from the documented ranking rather than run:** pod 1 is 2 GB over its request, pod 2 only 0.5 GB over, so with equal priorities pod 1 (the one causing the pressure) ranks first for eviction.
-
-> [!question] **Is DevOps in demand?**
-> Quite a lot, and arguably more so now. With AI tools writing a growing share of code and that code going straight to production, more things break there, and the work of deploying, running and fixing systems does not shrink.
-
-> [!info] **This was run, not just read.**
-> Every command above was run in this order on Minikube v1.39.0 with Kubernetes v1.37.0, on an Ubuntu 26.04 virtual machine, using the Spring Boot project with its Java package renamed. Spring Boot 4.1.1 on Java 21.0.13, MySQL 8.4. The outputs shown are from that run, including the refused first request, the 500 error and the data loss.

@@ -12,7 +12,7 @@ The difference is that a production application is not used by one person. Four 
 
 ### The thread pool
 
-A program can run several pieces of work at the same time as separate **threads**. In Java a thread can be created by hand, `Thread t1 = new Thread(...)`, and every language has its own way to do the same. A server cannot sensibly create a brand-new thread for every request, because creating threads costs time and memory; instead it uses a **thread pool**: when the application starts, it sets aside a space inside itself and creates a number of threads in advance: the **worker threads**, so called because doing the work is their whole job.
+A program can run several pieces of work at the same time as separate **threads**. In Java a thread can be created by hand, `Thread t1 = new Thread(...)`, and every language has its own way to do the same. A server cannot sensibly create a brand-new thread for every request, because creating threads costs time and memory; instead it uses a **thread pool**: when the application starts, it sets aside a space inside itself and creates a number of threads in advance (the **worker threads**, so called because doing the work is their whole job).
 
 When a request arrives:
 
@@ -24,7 +24,7 @@ When a request arrives:
 **As many requests can be handled at the same moment as the pool has threads.** (Running things at the same time is called concurrency; it is not quite the same thing as parallelism, a distinction that belongs to multithreading in depth.)
 
 ```mermaid
-flowchart LR
+flowchart TB
     C["Requests arrive"] --> F{"Free worker<br/>thread in the pool?"}
     F -->|"yes"| T["Thread runs the endpoint<br/>busy until it finishes"]
     T -->|"response sent"| P["Thread goes back<br/>into the pool"]
@@ -64,7 +64,7 @@ Now back to the cluster. One node (one server) runs two pods, two replicas of th
 | **high response time** | a core runs one thread at a time and switches between them (the context switching described in the resource requests note), so with many threads competing, work that should have finished quickly takes longer |
 | **the waiting queue fills** | requests pile up faster than threads free up, and once it is full they are rejected |
 
-Put together, **the whole system becomes slow**: every request takes longer to answer, and many are refused outright. A server in that state is **unavailable**, and that is the most dangerous state a server can be in, because availability — the share of the time an application actually answers — is what users see. Customers who were about to buy something get errors instead.
+Put together, **the whole system becomes slow**: every request takes longer to answer, and many are refused outright. A server in that state is **unavailable**, and that is the most dangerous state a server can be in, because availability (the share of the time an application actually answers) is what users see. Customers who were about to buy something get errors instead.
 
 This is a real and recurring failure. An e-commerce site at peak time is the usual example: Flipkart's Big Billion Days and Amazon's Great Indian Festival around Diwali, or a flash sale where an ₹80,000 iPhone is offered for ₹50–60,000, bring a crowd onto the site at the same moment, and if the scaling has not been handled properly the servers slow down or fail. Snapdeal once ran deals such as a pen drive for one rupee, and the click simply did not go through. The CBSE results site is the most familiar case of all: when class 10 and 12 results came out, the whole site would hang: the user's internet was fast, but so many people arrived at once that the servers had not been scaled to handle them.
 
@@ -105,7 +105,6 @@ flowchart TB
     classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
     classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
     classDef step fill:#7a5a1f,stroke:#b08a2e,stroke-width:1.5px,color:#fff
-    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
     class H1,H2,V1,V2 mech
     class H3,N2 good
     class N1 step
@@ -116,15 +115,17 @@ flowchart TB
 
 This note covers the first row. The other two are the next note.
 
+---
+
 ## The Horizontal Pod Autoscaler
 
 A **HorizontalPodAutoscaler** (HPA) is a Kubernetes object that adjusts the replica count of a workload (a Deployment, for instance) from observed metrics. In outline, it is told a lower bound and an upper bound: start at 3 pods, say, never go above 10, and in between add pods as load rises. When 3 are not enough it asks for a fourth, when 4 are not enough a fifth, and so on up to 10.
 
-How does it know that the pods are not enough? It does not read the Java code, and it does not watch requests itself. **It reads metrics** — measurements such as how much CPU and memory each pod is using — that another component collects. And it does not decide anything on its own initiative: **it is not intelligence.** It follows the rule written in its manifest, exactly like a program: above this level, add pods; below it, remove them.
+How does it know that the pods are not enough? It does not read the Java code, and it does not watch requests itself. **It reads metrics**, measurements of how much CPU and memory each pod is using, which another component collects. And it does not decide anything on its own initiative: **it is not intelligence.** It follows the rule written in its manifest, exactly like a program: above this level, add pods; below it, remove them.
 
 ### The target is a percentage of the request
 
-The usual rule is a CPU target: min 2 replicas, max 8, **target average CPU utilisation 50%**. Recall from the resource requests note that each container states a **request** (what the scheduler reserves for it) and a **limit**, the most it may use. A pod requesting 256m CPU, with a limit of 512m, could be at 50% of either. (The pod sizes in this section and the next — 256m here, 250m in the worked example — are round numbers chosen to make the arithmetic easy to follow. The real Notes API, which the run later in this note uses, requests 100m.)
+The usual rule is a CPU target: min 2 replicas, max 8, **target average CPU utilisation 50%**. Recall from the resource requests note that each container states a **request** (what the scheduler reserves for it) and a **limit**, the most it may use. A pod requesting 256m CPU, with a limit of 512m, could be at 50% of either. (The pod sizes in this section and the next, 256m here and 250m in the worked example, are round numbers chosen to make the arithmetic easy to follow. The real Notes API, which the manifest further down scales, requests 100m.)
 
 > [!important] **CPU utilisation for an HPA is measured against the request, never the limit.**
 > The limit is an upper bound the pod is not meant to reach; the request is what the pod was scheduled on. So 50% of a 256m request is 128m. When the pods, **on average across all the pods of the Deployment**, use more than 128m each, the HPA adds a pod, and the Service spreads the requests over three. If the three together still average more than 50% of their requests, it adds a fourth, and so on up to the maximum of 8.
@@ -152,7 +153,7 @@ desired replicas = ceil(current replicas × current utilisation / target utilisa
 
 `ceil` rounds up, because 3.2 pods is not a number of pods. So the HPA scales the Deployment from 2 pods to 4, and the Deployment and ReplicaSet controllers create the two new pods, as they would after any replica change.
 
-That is the simplified calculation. The real controller also accounts for pods that are not ready yet, for missing metrics, and for rules that keep it from reacting to every small movement. Three of those defaults, read from the Kubernetes v1.37.0 source:
+That is the simplified calculation. The real controller also accounts for pods that are not ready yet, for missing metrics, and for rules that keep it from reacting to every small movement. Three of those defaults, as of Kubernetes v1.37.0:
 
 | Default | Value | Effect |
 |---|---|---|
@@ -160,7 +161,26 @@ That is the simplified calculation. The real controller also accounts for pods t
 | tolerance | 10% | a utilisation within 10% of the target, relative to it, causes no change: for a 50% target, anything from 45% to 55% |
 | downscale stabilisation window | 5 minutes | the HPA scales down only to the highest replica count it recommended in the last 5 minutes, so a brief dip does not remove pods |
 
-All you supply is the minimum, the maximum and the target; the controller calculates the rest itself.
+All you supply is the minimum, the maximum and the target; the controller calculates the rest itself. One pass of that loop, with the numbers above:
+
+```mermaid
+flowchart TD
+    S["Every 15 seconds<br/>read average utilisation"] --> T{"Within 10%<br/>of the target?"}
+    T -->|"yes, 45–55%"| N["No change"]
+    T -->|"no, e.g. 80%"| F["ceil(2 × 80 / 50) = 4"]
+    F -->|"kept between"| C["minReplicas and<br/>maxReplicas"]
+    C -->|"new count"| D["Deployment<br/>scales to 4"]
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef step fill:#7a5a1f,stroke:#b08a2e,stroke-width:1.5px,color:#fff
+    classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    class S actor
+    class T,F mech
+    class C step
+    class D good
+    class N inert
+```
 
 ### Choosing the target
 
@@ -171,15 +191,17 @@ All you supply is the minimum, the maximum and the target; the controller calcul
 In a CPU-based setup, the **Metrics Server** collects the resource usage of every pod from the kubelets and serves it through the Kubernetes API; the HPA controller reads it and decides the replica count; the Deployment does the rest.
 
 ```mermaid
-flowchart LR
-    K["Kubelets<br/>measure pod CPU and memory"] --> M["Metrics Server"]
-    M --> H["HPA controller<br/>compares with the target"]
+flowchart TB
+    K["Kubelets<br/>measure pod CPU and memory"] -->|"collected by"| M["Metrics Server"]
+    M -->|"served through<br/>the Kubernetes API"| H["HPA controller<br/>compares with the target"]
     H -->|"changes replicas"| D["Deployment and<br/>ReplicaSet controllers"]
-    D --> P["Pods created<br/>or removed"]
+    D -->|"create or remove"| P["Pods"]
     classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
     classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
+    classDef step fill:#7a5a1f,stroke:#b08a2e,stroke-width:1.5px,color:#fff
     classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
-    class K,M actor
+    class K actor
+    class M step
     class H mech
     class D,P good
 ```
@@ -188,9 +210,10 @@ flowchart LR
 
 ## The manifest
 
-Saved as `hpa.yaml`, the HPA for the Notes API is:
+The HPA for the Notes API sits next to the other manifests:
 
 ```yaml
+# k8s/09-notes-hpa.yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -203,20 +226,29 @@ spec:
   minReplicas: 2
   maxReplicas: 8
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 50
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
 ```
 
-| Field | Purpose |
-|---|---|
-| `scaleTargetRef` | the workload the HPA controls: the Deployment named `notes-app`. `apps/v1` is the API version of Deployments (the same `apiVersion` line every Deployment manifest starts with), not the name of the application |
-| `minReplicas: 2` | never fewer than two replicas |
-| `maxReplicas: 8` | never more than eight |
-| `metrics` | what to measure: here the `cpu` resource, against a target of 50% average utilisation of the requests |
+As with every manifest, the file is the body of a request to the API server. `apiVersion` and `kind` name the endpoint it goes to, the way `POST /api/v2/autoscalers` would in a Spring controller; everything under `spec` is the payload.
+
+| Field | Whose value | Means |
+|---|---|---|
+| `apiVersion: autoscaling/v2` | Kubernetes', fixed | HPAs live in the `autoscaling` API group, version `v2`. Not the application's version |
+| `kind: HorizontalPodAutoscaler` | Kubernetes', fixed | the type of object, like a class name the API server knows |
+| `metadata.name: notes-app-hpa` | yours, free text | this HPA's own name, used by `kubectl get hpa` and `kubectl describe hpa` |
+| `scaleTargetRef` | mixed | the workload the HPA controls. `apiVersion: apps/v1` and `kind: Deployment` are Kubernetes' fixed names for a Deployment (the same two lines every Deployment manifest starts with); `name: notes-app` is yours and must match the Deployment's `metadata.name` |
+| `minReplicas: 2` | yours | never fewer than two replicas |
+| `maxReplicas: 8` | yours | never more than eight |
+| `metrics` | a list | what to measure; with several entries, the HPA computes a count for each and takes the largest |
+| `type: Resource` | Kubernetes', fixed | one of five metric types, listed later in this note; `Resource` is the pods' own CPU or memory |
+| `resource.name: cpu` | Kubernetes', fixed | `cpu` or `memory` |
+| `target.type: Utilization` | Kubernetes', fixed | measure as a percentage of the request. The other choices are `Value` and `AverageValue`, a plain quantity |
+| `averageUtilization: 50` | yours | the target: 50% of each pod's request, averaged across the pods |
 
 **`maxReplicas: 8` is a ceiling, not a promise.** It does not guarantee the cluster has room to run eight pods.
 
@@ -236,73 +268,26 @@ kubectl top nodes
 Then the HPA is applied and inspected:
 
 ```bash
-kubectl apply -f hpa.yaml
+kubectl apply -f k8s/09-notes-hpa.yaml
 kubectl get hpa
 kubectl describe hpa notes-app-hpa
 kubectl get pods -w
 ```
 
-> [!info] **This was run, not just read.**
-> With the Notes API idle (its pods using 2m CPU each against the 100m request), the HPA reported:
-> ```text
-> NAME            REFERENCE              TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
-> notes-app-hpa   Deployment/notes-app   cpu: 2%/50%   2         8         2          1s
-> ```
-> and `kubectl describe hpa` spelled out what the percentage is of:
-> ```text
-> resource cpu on pods  (as a percentage of request):  2% (2m) / 50%
-> ```
-> 2m of a 100m request is 2%. Measured against the 500m limit it would have been 0.4%.
+With the Notes API idle, its pods using 2m CPU each against the 100m request, `kubectl get hpa` shows:
 
-Installing the Metrics Server creates no load. To see the HPA act, something has to make the application use CPU. The pods below send requests to the Notes API in an endless loop. `notes-app` in the URL is the ClusterIP Service the Ingress note created in front of the API pods, on port 80; inside the cluster, a Service's name resolves to its address through cluster DNS, as the Services note showed, so a pod can reach the API simply as `http://notes-app`. Read the warning further down before running this on a small machine.
-
-```bash
-for i in 1 2 3; do
-  kubectl run load-$i --image=busybox:1.36 --restart=Never -- /bin/sh -c "while true; do wget -q -O- http://notes-app/notes >/dev/null; done"
-done
+```text
+NAME            REFERENCE              TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+notes-app-hpa   Deployment/notes-app   cpu: 2%/50%   2         8         2          1s
 ```
 
-Stopping the load is the first thing to do afterwards, and removing the HPA returns the Deployment to a fixed count:
+and `kubectl describe hpa` spells out what the percentage is of:
 
-```bash
-kubectl delete pod load-1 load-2 load-3
-kubectl delete -f hpa.yaml
-kubectl scale deployment notes-app --replicas=2
+```text
+resource cpu on pods  (as a percentage of request):  2% (2m) / 50%
 ```
 
-> [!info] **This was run, not just read.**
-> About a minute after the three load pods started, utilisation reached `cpu: 204%/50%`. The HPA's events then showed two steps, 17 seconds apart:
-> ```text
-> SuccessfulRescale   horizontalpodautoscaler/notes-app-hpa   New size: 4; reason: cpu resource utilization (percentage of request) above target
-> SuccessfulRescale   horizontalpodautoscaler/notes-app-hpa   New size: 8; reason: cpu resource utilization (percentage of request) above target
-> ```
-> The formula gives ceil(2 × 204 / 50) = 9, and `maxReplicas` caps that at 8. It went to 4 first because, when the manifest sets no scaling behaviour of its own, the controller limits each step up to **twice the current replicas, or 4, whichever is larger**: from 2 that is 4, and from 4 it is 8. That rule is in the HPA controller's source for Kubernetes v1.37.0.
-
-> [!failure] **Eight replicas asked for, and one pod stuck in `Pending`.**
-> The single node had 2 CPUs (2,000m), and its existing pods already requested 1,500m of it. Each new Notes API pod requests 100m, so five more fitted and the sixth did not:
-> ```text
-> 0/1 nodes are available: 1 Insufficient cpu. preemption: 0/1 nodes are available: 1 No preemption victims found for incoming pod.
-> ```
-> **Preemption** is the scheduler's last resort: when a pod cannot be placed, it may evict pods of lower priority to make room for it. Every pod here had the same priority, so there was nothing to evict: no victims. The HPA had done its part; the scheduler had nowhere to put the pod. **An HPA can ask for more pods than the cluster can run.** Without a way to add nodes, those pods simply wait — the gap the Cluster Autoscaler in the next note fills.
-
-> [!warning] **Autoscaling a Java application on a small machine can take the whole cluster down.**
-> The run above did more than leave a pod pending. Every new pod was a JVM starting up, on top of the load generators, on a 2-CPU, 3.8 GB virtual machine. Its load average reached 91, and the Kubernetes API server stopped answering for about five minutes: `kubectl` failed with `net/http: TLS handshake timeout` and `connection refused`.
-> A gentler run did not avoid it. With **one** load pod and `maxReplicas: 4`, utilisation reached `cpu: 87%/50%` and the HPA went from 2 pods to 4 within 45 seconds, as ceil(2 × 87 / 50) = 4 predicts — and within two minutes the machine's load average had gone from 1.4 to 31 and `kubectl` was failing to connect again. On a machine this size, the load generators and the starting JVMs compete with the control plane itself for the same two CPUs.
-> **When `kubectl` cannot reach the API server, `kubectl delete` cannot stop the load either.** What worked both times was stopping the load containers from inside the node, where the container runtime still answers. On Minikube's Docker driver the node is a Docker container named `minikube`, and its runtime is driven with `crictl`:
-> ```bash
-> sudo docker exec minikube crictl ps --name load -q
-> sudo docker exec minikube crictl stop -t 0 <container-id>
-> ```
-> Within two minutes the API server answered again, and the cleanup commands above finished the job. Load-test an HPA on a machine with room to spare, and keep `maxReplicas` within what the nodes can actually hold.
-
-> [!question] **What if the node does not have the capacity for 8 replicas?**
-> Then the pods that do not fit are not created on any node; they stay `Pending`, exactly as above, and the application stays busy. Only adding a node helps.
-
-> [!question] **When load drops, what decides the scale-down: the number of requests in progress, or simply lower CPU?**
-> Whatever metric the HPA was given. With a CPU target, scaling down follows CPU too, after the five-minute stabilisation window, so the count does not drop on a momentary lull.
-
-> [!question] **When a pod is removed, does it finish the requests it is handling first?**
-> You would want it to, so that no request is cut off. Kubernetes sends the container a termination signal and then waits (30 seconds by default, the pod's `terminationGracePeriodSeconds`) before killing it. Finishing in-flight requests inside that window is the application's job: it has to shut down gracefully when it receives the signal.
+2m of a 100m request is 2%. Measured against the 500m limit it would be 0.4%.
 
 ## When CPU is the wrong signal
 
@@ -311,26 +296,47 @@ A CPU target works for an application whose work is computing. **High traffic do
 1. Request 1 arrives. A worker thread takes it and passes the work to MySQL, and MySQL is slow to finish.
 2. Request 2 arrives and does the same. So does request 3.
 3. Each of those threads is waiting for MySQL. It cannot go back to the pool, because its request is not finished, so it **looks busy, but it is doing nothing**. It sits idle, waiting for the data.
-4. The pod's CPU stays low, because nothing is computing.
+4. The pod's CPU stays low, because nothing is computing. A thread waiting for MySQL's reply is put to sleep by the operating system: it leaves the line of threads waiting for a CPU core, and it is given a core again only once its data arrives.
 
-So the HPA sees a healthy pod. Meanwhile the requests keep arriving, the pool runs out of threads, the queue grows and users wait longer and longer. **The HPA fails completely here: it waits for a CPU rise that never comes.**
+So the HPA sees a healthy pod. Meanwhile the requests keep arriving. With a pool of 200 threads, requests 1 to 200 each hold a sleeping thread, and request 201 onwards finds no free thread and goes into the waiting queue. The queue grows and users wait longer and longer. **The HPA fails completely here: it waits for a CPU rise that never comes.**
 
 ```mermaid
-flowchart LR
-    R["Many requests"] --> S["Spring Boot pod<br/>threads waiting on MySQL"]
+flowchart TB
+    R["Many requests"] -->|"arrive at"| S["Spring Boot pod<br/>all 200 threads waiting on MySQL<br/>asleep, not using the CPU"]
     S -->|"slow queries"| D["MySQL"]
-    S --> C["CPU stays low"]
-    C --> H["HPA: no scaling needed"]
-    S --> U["Users: response time<br/>keeps rising"]
+    S -->|"threads asleep"| C["CPU stays low"]
+    C -->|"read by"| H["HPA: no scaling needed"]
+    S -->|"request 201 onwards:<br/>no free thread"| Q["Waiting queue grows"]
+    Q -->|"so"| U["Users: response time<br/>keeps rising"]
     classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
     classDef broken fill:#7a1f1f,stroke:#b03030,stroke-width:1.5px,color:#fff
     classDef step fill:#7a5a1f,stroke:#b08a2e,stroke-width:1.5px,color:#fff
     classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
     class R,D actor
     class S mech
-    class C step
+    class C,Q step
     class H,U broken
 ```
+
+> [!question] **With 200 threads taken, should context switching or throttling not push the CPU up anyway?**
+> No, because none of those threads wants the CPU. Context switching, from the resource requests note, happens between threads that are ready to run and competing for a core; a thread waiting for MySQL is asleep and not in that line at all. Throttling, from the same note, only holds back a container using more CPU than its limit. A pod with 200 waiting processes, measured with `kubectl top`:
+>
+> | | Measured |
+> |---|---|
+> | waiting processes | 200 |
+> | their state | all `S` (sleeping), none `R` (running) |
+> | CPU | **2m**, which is 0.2% of one core |
+>
+> These were processes waiting on a timer rather than Java threads waiting on MySQL. The operating system puts both to sleep in the same state, `S`.
+>
+> A slower MySQL does not bring in more requests per second either. The users decide how many requests arrive each second; slowness only makes each one stay longer, so more of them are in progress at the same time:
+>
+> | | Requests arriving per second | Time per request | Requests in progress at once |
+> |---|---|---|---|
+> | MySQL fast | 100 | 0.05 s | 100 × 0.05 = **5** threads taken |
+> | MySQL slow | 100 | 2 s | 100 × 2 = **200** threads, the whole pool |
+>
+> The arrival rate and the Java work per request are the same in both rows, so the CPU work per second does not rise. What fills up is the thread pool, and then the queue behind it. The overload at the start of this note was a different case: there, thousands of threads were all running Java code and competing for the cores.
 
 That is why, in production, an HPA rarely depends on CPU alone but on several signals together:
 
@@ -356,10 +362,23 @@ The Metrics Server collects CPU and memory, and nothing else. A response time or
 | `Object` | a metric of a single Kubernetes object (for example, hits per second on an Ingress) |
 | `External` | a metric from outside the cluster (for example, the length of a queue in a cloud messaging service) |
 
+```mermaid
+flowchart TB
+    MS["Metrics Server"] -->|"CPU, memory"| H["HPA controller"]
+    AD["Custom metrics adapter<br/>installed separately"] -->|"latency, queue length"| H
+    H -->|"changes replicas"| D["Deployment"]
+    classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
+    classDef step fill:#7a5a1f,stroke:#b08a2e,stroke-width:1.5px,color:#fff
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    class MS good
+    class AD step
+    class H,D mech
+```
+
 > [!failure] **An HPA on a response-time metric, in a cluster with no custom metrics adapter.**
 > This HPA targets an average of one second per request, using a per-pod custom metric:
 > ```yaml
->   metrics:
+> metrics:
 >   - type: Pods
 >     pods:
 >       metric:
@@ -368,13 +387,13 @@ The Metrics Server collects CPU and memory, and nothing else. A response time or
 >         type: AverageValue
 >         averageValue: "1"
 > ```
-> Applied to the same cluster, where the only metrics API registered was `v1beta1.metrics.k8s.io`, served by the Metrics Server, it never got a number:
+> `type: Pods` picks the per-pod row of the table above, `metric.name` names the metric the application publishes, and `AverageValue` asks for a plain average across the pods (here 1 second) instead of a percentage of a request. On a cluster where the only metrics API registered is `v1beta1.metrics.k8s.io`, served by the Metrics Server, the HPA never gets a number:
 > ```text
 > NAME                    REFERENCE              TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
 > notes-app-hpa-latency   Deployment/notes-app   <unknown>/1   2         8         2          40s
 > ScalingActive  False  FailedGetPodsMetric  the HPA was unable to compute the replica count: unable to get metric http_server_requests_seconds: unable to fetch metrics from custom metrics API: no custom metrics API (custom.metrics.k8s.io) registered
 > ```
-> The manifest was valid; the metric had no source. Scaling on anything other than CPU and memory means installing a metrics pipeline first, which is outside this folder.
+> The manifest is valid; the metric has no source. Scaling on anything other than CPU and memory means installing a metrics pipeline first, which is outside this folder.
 
 ## Summary
 
@@ -389,6 +408,3 @@ The Metrics Server collects CPU and memory, and nothing else. A response time or
 | Custom and external metrics | other signals (latency, queue length) served by an adapter, not the Metrics Server |
 
 An HPA watches a metric and changes the number of pods. **It guarantees more pods are asked for when the metric crosses its target. It does not guarantee those pods can be scheduled, and it does not see load that never shows up in the metric it watches.**
-
-> [!info] **Versions, checked 2026-11-17.**
-> Run on Minikube v1.39.0 with Kubernetes v1.37.0 on a single node with 2 CPUs and about 3.8 GiB, with the metrics-server add-on, against the Notes API from the deployment note (request 100m CPU, limit 500m). The HPA API is `autoscaling/v2`. The defaults in the table above (15-second sync, 10% tolerance, five-minute downscale window) and the step limit of twice the replicas or 4 are from the Kubernetes v1.37.0 source. An HPA manifest can also carry its own scaling rules, which replace the step limit, and the cluster's settings can change the other defaults; neither is covered in this folder.

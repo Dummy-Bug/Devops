@@ -70,15 +70,97 @@ The two port numbers are explained later in this note: requests arrive at the Se
 
 ### What a Service is, and what it is not
 
-A Service passes requests on to the pods it has found, much as a load balancer spreads requests across replicas. But it is not a clever one. It does not know which pod is busy, or how much load a server is under, and it does not route by it. It spreads connections across the eligible pods by a simple rule. It is best understood as **stable service discovery plus routing towards matching pods**, not as an application-aware load balancer. The routing itself is carried out on every node by **kube-proxy**, the component the architecture note introduced for exactly this: it keeps each node's networking rules in step with the Services and their pods.
+A Service passes requests on to the pods it has found, much as a load balancer spreads requests across replicas. But it is not a clever one. It does not know which pod is busy, or how much load a server is under, and it does not route by it. It spreads connections across the eligible pods by a simple rule. It is best understood as **stable service discovery plus routing towards matching pods**, not as an application-aware load balancer. The routing itself is carried out on every node by **kube-proxy**, the component the architecture note introduced for exactly this: it keeps each node's networking rules in step with the Services and their pods. How that split works is the subject of the next subsection.
 
 Nine requests in a row from one client were answered five times by one pod, three times by another and once by the third: spread, but not evenly and not in turn. **Going further:** in its default mode on Linux, kube-proxy chooses a backend pod at random for each connection, which is exactly that pattern.
 
 > [!question] **To the front end it looks as if it is talking straight to the back end. So is a Service a reverse proxy?**
-> You can think of it that way — a reverse proxy, as the local-cluster note put it, receives requests on an application's behalf and passes them on — or as a load balancer; one of its types is even called `LoadBalancer`, below. The distinction worth holding on to is scope. The Services here are about containers talking to containers inside Kubernetes: a front-end pod calling a back-end pod, or any pod calling any other. A load balancer in the usual sense sits at the edge of the whole system, where a request from the internet first arrives, and spreads it across backend servers. When a real application is deployed to the cloud, those two pictures meet, and the gap between them nearly disappears.
+> You can think of it that way — a reverse proxy, as the local-cluster note put it, receives requests on an application's behalf and passes them on — or as a load balancer; one of its types is even called `LoadBalancer`, below. The distinction worth holding on to is scope. The Services here are about containers talking to containers inside Kubernetes: a front-end pod calling a back-end pod, or any pod calling any other. A load balancer in the usual sense sits at the edge of the whole system, where a request from the internet first arrives, and spreads it across backend servers. When a real application is deployed to the cloud, those two pictures meet, and the gap between them nearly disappears. One difference is mechanical rather than a matter of scope: a reverse proxy is a running program that receives each request, and a Service is not, as the next subsection shows.
 
 > [!tip] **Each service gets a Service of its own.**
 > The Service above is the order service's: all its replicas run the same order-service code, and this Service fronts them. A payment service has its own pods and its own Service. A front end that calls both needs two addresses (one for the order service and one for the payment service), but never the address of any individual pod or replica. Each Service is the one intermediate layer in front of one application's replicas.
+
+### Who actually moves the request: kube-proxy and the kernel
+
+This folder keeps saying that the Service passes a request to one of its pods. That is a convenient way to put it, but no program called a Service is running anywhere. Nothing listens on `10.99.212.197`, and no process receives the request and sends it on. **A Service is a record**: an object stored through the API server like any other, holding a name, an address, a port and a selector. The current addresses of its matching pods are kept beside it in a second object, an **EndpointSlice**, which Kubernetes rewrites as pods come and go.
+
+The forwarding is split between two things on every node, and only one of them is on the request's path:
+
+| Who | When it works | What it does |
+|---|---|---|
+| kube-proxy | before any request arrives, and again whenever a Service or its pod list changes | reads each Service and its EndpointSlice from the API server and writes forwarding rules into the node's Linux kernel |
+| the node's kernel | on every request | matches the destination `10.99.212.197:80` against those rules, picks one pod, and rewrites the destination to that pod's address and port `8080` |
+
+```mermaid
+flowchart LR
+    subgraph SETUP["Before any request, and on every change"]
+        API["API server<br/>Service order-service<br/>EndpointSlice: 3 pod IPs"]
+        KP["kube-proxy<br/>on every node"]
+    end
+    R["Kernel rules on the node<br/>10.99.212.197:80<br/>→ one of 3 pods :8080"]
+    subgraph REQ["Every request"]
+        FE["Front-end pod"]
+        A["Pod 10.244.0.30"]
+        B["Pod 10.244.1.3"]
+        C["Pod 10.244.1.4"]
+    end
+    API -->|"watched by"| KP
+    KP -->|"writes"| R
+    FE -->|"request to<br/>10.99.212.197:80"| R
+    R -->|"rewritten to :8080"| A
+    R -->|"or"| B
+    R -->|"or"| C
+    classDef inert fill:#3a3a3a,stroke:#5a5a5a,stroke-width:1.5px,color:#fff
+    classDef step fill:#7a5a1f,stroke:#b08a2e,stroke-width:1.5px,color:#fff
+    classDef mech fill:#1f4f7a,stroke:#2f6ea6,stroke-width:1.5px,color:#fff
+    classDef actor fill:#2d333b,stroke:#4b5563,stroke-width:1.5px,color:#fff
+    classDef good fill:#1f6f3f,stroke:#2e9c5a,stroke-width:1.5px,color:#fff
+    class API inert
+    class KP step
+    class R mech
+    class FE actor
+    class A,B,C good
+```
+
+**kube-proxy never sees the request.** It is the program that writes the rules; the kernel is what applies them, on whichever node the request is sent from. So the shorthand used throughout this folder (the Service passes the request on) always means the rules that kube-proxy wrote for that Service.
+
+Spring MVC has the same split. `@GetMapping("/orders")` on a controller method never handles a request itself. At startup Spring reads the annotation and builds a table from URL to handler method, and the `DispatcherServlet` looks every request up in that table. The Service plays the annotation, kube-proxy plays the startup step that builds the table, and the kernel plays the dispatcher. The one difference is that kube-proxy does not stop after startup: it rewrites the rules every time the pod list changes.
+
+**Going further: the rules themselves.** kube-proxy's default mode on Linux is `iptables`, named after the kernel's packet-filtering rules it writes, and on Minikube they can be printed. With three pods labelled `app: order-service` and the Service above applied, the Service received the address `10.103.247.78` and the pods `10.244.0.58` to `.60` (different numbers from the diagram, on a different cluster):
+
+```bash
+minikube ssh -- "sudo iptables-save -t nat | grep default/order-service"
+```
+
+```text
+-A KUBE-SERVICES -d 10.103.247.78/32 -p tcp -m comment --comment "default/order-service cluster IP" -m tcp --dport 80 -j KUBE-SVC-QWJNOBD5KHUXZAD6
+-A KUBE-SVC-QWJNOBD5KHUXZAD6 -m comment --comment "default/order-service -> 10.244.0.58:8080" -m statistic --mode random --probability 0.33333333349 -j KUBE-SEP-NUANOMFTPCXLQKPM
+-A KUBE-SVC-QWJNOBD5KHUXZAD6 -m comment --comment "default/order-service -> 10.244.0.59:8080" -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-D5VAJHOSRFSSOUFZ
+-A KUBE-SVC-QWJNOBD5KHUXZAD6 -m comment --comment "default/order-service -> 10.244.0.60:8080" -j KUBE-SEP-GQG23KVTEAELS2VC
+-A KUBE-SEP-NUANOMFTPCXLQKPM -p tcp -m comment --comment "default/order-service" -m tcp -j DNAT --to-destination 10.244.0.58:8080
+```
+
+The full output also has one `DNAT` line for each of the other two pods, and a few `KUBE-MARK-MASQ` lines, which mark certain connections to have their source address rewritten as well. The five above carry the idea:
+
+| Rule | What it says |
+|---|---|
+| `KUBE-SERVICES -d 10.103.247.78/32 --dport 80` | traffic for the Service's address and port enters this Service's own chain of rules |
+| `--probability 0.33333333349` → `.58` | the first rule catches one connection in three |
+| `--probability 0.50000000000` → `.59` | half of the remaining two in three: another third |
+| no probability → `.60` | everything still left: the last third |
+| `DNAT --to-destination 10.244.0.58:8080` | rewrite the destination to the chosen pod's address and its `targetPort` |
+
+Each pod gets an equal one-in-three chance per connection, picked at random. That is the uneven five, three and one from nine requests described earlier: random, not in turn.
+
+Delete the pod at `.58`, the ReplicaSet starts a replacement at `10.244.0.61`, and within seconds the same command prints the Service's chain rewritten:
+
+```text
+-A KUBE-SVC-QWJNOBD5KHUXZAD6 -m comment --comment "default/order-service -> 10.244.0.59:8080" -m statistic --mode random --probability 0.33333333349 -j KUBE-SEP-D5VAJHOSRFSSOUFZ
+-A KUBE-SVC-QWJNOBD5KHUXZAD6 -m comment --comment "default/order-service -> 10.244.0.60:8080" -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-GQG23KVTEAELS2VC
+-A KUBE-SVC-QWJNOBD5KHUXZAD6 -m comment --comment "default/order-service -> 10.244.0.61:8080" -j KUBE-SEP-JCWPHQIERP26SUDY
+```
+
+The dead pod's address is gone and the new one has taken its share. The Service object itself did not change at all; only its EndpointSlice and the rules kube-proxy wrote from it did.
 
 ## Calling a Service by name: Service DNS
 
